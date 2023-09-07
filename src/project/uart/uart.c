@@ -567,6 +567,37 @@ void uart_init(void) {
 
 
 
+#include <string.h>
+inline static void write_usart(struct uart_t *uart, void *buf, uint16_t len) {
+	nvic_disable_irq(uart->hardware->tx.dma_irqn);
+	if ((uart->tx_state == TX_WORKING || uart->tx_state == TX_FULL) && (uart->tx_num_to_send)) {
+		uart->tx_state = TX_FULL;
+	} else {
+		// len = usbd_ep_read_packet(dev, uart->ep, uart->buffers[uart->tx_curr_buffer_index], CDCACM_PACKET_SIZE);
+		memcpy(&(uart->buffers[uart->tx_curr_buffer_index]), buf, len);
+		if ((uart->tx_state != TX_WORKING) && (len)) {
+			gpio_set(uart->hardware->dir.port, uart->hardware->dir.pin);
+			uart->tx_empty = false;
+			uart->tx_dma_buffer_index = uart->tx_curr_buffer_index;
+			// disable the DMA channel (It should already be disabled when the state is set to TX_IDLE)
+			dma_disable_channel(uart->hardware->tx.dma, uart->hardware->tx.channel);
+			// set: Source, Destination, and Amount (DMA channel must be disabled)
+			dma_set_peripheral_address(uart->hardware->tx.dma, uart->hardware->tx.channel, (uint32_t)&USART_DR(uart->hardware->usart));
+			dma_set_memory_address(uart->hardware->tx.dma, uart->hardware->tx.channel, (uint32_t)(uart->buffers[uart->tx_dma_buffer_index]));
+			dma_set_number_of_data(uart->hardware->tx.dma, uart->hardware->tx.channel, len);
+			uart->tx_curr_buffer_index = ((uart->tx_curr_buffer_index + 1) % NUM_TX_BUFFERS);
+			// set to (Working)
+			uart->tx_state = TX_WORKING;
+			// enable the uart TX DMA interrupt
+			usart_enable_tx_dma(uart->hardware->usart);
+			// enable DMA channel
+			dma_enable_channel(uart->hardware->tx.dma, uart->hardware->tx.channel);
+		} else if (len) {
+			uart->tx_num_to_send = len;
+		}
+	}
+	nvic_enable_irq(uart->hardware->tx.dma_irqn);
+}
 inline static void usbuart_usb_out_cb(struct uart_t *uart, usbd_device *dev) {
 	int len;
 
@@ -713,6 +744,38 @@ void usbuart_send_break(struct uart_t *dev) {
  * Interrupt routines
  */
 
+inline static void uart_TX_continue(struct uart_t *dev) {
+	dma_disable_channel(dev->hardware->tx.dma, dev->hardware->tx.channel);
+	usart_disable_tx_dma(dev->hardware->usart);
+	if (dma_get_interrupt_flag(dev->hardware->tx.dma, dev->hardware->tx.channel, DMA_TCIF)) {
+		// the transmit buffer is empty, clear the interupt flag
+		dma_clear_interrupt_flags(dev->hardware->tx.dma, dev->hardware->tx.channel, DMA_TCIF);
+		if (dev->tx_num_to_send) {
+			// There is data in the next buffer, set the DMA to send it
+			dev->tx_curr_buffer_index = ((dev->tx_curr_buffer_index + 1) % NUM_TX_BUFFERS);
+			dev->tx_dma_buffer_index = ((dev->tx_dma_buffer_index + 1) % NUM_TX_BUFFERS);
+			dma_set_peripheral_address(dev->hardware->tx.dma, dev->hardware->tx.channel, (uint32_t)&USART_DR(dev->hardware->usart));
+			dma_set_memory_address(dev->hardware->tx.dma, dev->hardware->tx.channel, (uint32_t)(dev->buffers[dev->tx_dma_buffer_index]));
+			dma_set_number_of_data(dev->hardware->tx.dma, dev->hardware->tx.channel, dev->tx_num_to_send);
+			dev->tx_num_to_send = 0;
+			usart_enable_tx_dma(dev->hardware->usart);
+			dma_enable_channel(dev->hardware->tx.dma, dev->hardware->tx.channel);
+
+			{
+				dev->tx_state = TX_WORKING;
+			}
+		} else {
+			dev->tx_num_to_send = 0;
+			dev->tx_state = TX_IDLE;
+
+			schedule_ctrl_update(dev, true);
+		}
+	}
+	if (dma_get_interrupt_flag(dev->hardware->tx.dma, dev->hardware->tx.channel, DMA_TEIF)) {
+		dma_clear_interrupt_flags(dev->hardware->tx.dma, dev->hardware->tx.channel, DMA_TEIF);
+		dev->tx_state = TX_ERROR;
+	}
+}
 inline static void uart_TX_DMA_empty(struct uart_t *dev) {
 	dma_disable_channel(dev->hardware->tx.dma, dev->hardware->tx.channel);
 	usart_disable_tx_dma(dev->hardware->usart);
@@ -754,7 +817,7 @@ inline static void uart_TX_DMA_empty(struct uart_t *dev) {
 	}
 }
 void UART1_TX_DMA_ISR(void) { uart_TX_DMA_empty(&uarts[0]); }
-void UART2_TX_DMA_ISR(void) { uart_TX_DMA_empty(&uarts[1]); }
+void UART2_TX_DMA_ISR(void) { uart_TX_continue(&uarts[1]); }	// DEBUG: Change the call for debugging
 void UART3_TX_DMA_ISR(void) { uart_TX_DMA_empty(&uarts[2]); }
 void UART4_TX_DMA_ISR(void) { uart_TX_DMA_empty(&uarts[3]); }
 
@@ -802,6 +865,10 @@ void send_rx(struct uart_t *dev) {
 				for (i=0; i < len; i++) {
 					reply_buf[sizeof(uint16_t) + i] = rx_buffer[i];
 				}
+			}
+
+			if (dev == &uarts[0]) {	// DEBUG: Change the call for debugging
+				write_usart(&uarts[1], &reply_buf[2], len);
 			}
 
 			if(usbd_ep_write_packet(usbdev, dev->ep, reply_buf, len+2) == 0) {
