@@ -171,8 +171,12 @@ uint32_t tim_table[][6] = {
 	{         0, 25000,              0, 27500,              0, 30000}, //  28800	0.0010416666	0.0011458333	0.00125
 	{         0, 18750,              0, 20625,              0, 22500}, //  38400	0.00078125  	0.000859375 	0.0009375
 	{         0, 12500,              0, 13750,              0, 15000}, //  57600	0.0005208333	0.000572917 	0.000625
-	{         0,  6250,              0,  6875,              0,  7500}, // 115200	0.000260417 	0.000286458 	0.0003125
-	{         0,  3125,              0,  3438,              0,  3750}, // 230400	0.000130208 	0.000143229 	0.00015625
+	// 60 bits (6 frames)     66 bits (6 frames)     72 bits (6 frames)
+	// TIMx_PSC, TIMx_CNT     TIMx_PSC, TIMx_CNT     TIMx_PSC, TIMx_CNT
+	{         0, 12500,              0, 13750,              0, 15000}, // 115200	0.000520833 	0.0005729167	0.000625
+	// 120 bits (12 frames)   132 bits (12 frames)   144 bits (12 frames)
+	// TIMx_PSC, TIMx_CNT     TIMx_PSC, TIMx_CNT     TIMx_PSC, TIMx_CNT
+	{         0, 12500,              0, 13750,              0, 15000}, // 230400	0.000520833 	0.0005729167	0.000625
 };
 
 /* Time to delay TX empty notification, rounded up to nearest millisecond */
@@ -251,7 +255,7 @@ void schedule_ctrl_update(struct uart_t *dev, bool tx_empty) {
 void disable_systick_if_unused() {
 	int i;
 	bool systick_in_use = false;
-	
+
 	for (i = 0; i < sizeof(uarts)/sizeof(uarts[0]); i++) {
 		if (uarts[i].tx_empty_count_down != -1 || uarts[i].ctrl_count_down != -1) {
 			systick_in_use = true;
@@ -269,7 +273,7 @@ void disable_systick_if_unused() {
 void raw_ctrl_update_sent(struct uart_t *dev, bool tx_empty) {
 	if (tx_empty)
 		dev->tx_empty_count_down = -1;
-	
+
 	dev->ctrl_count_down = -1;
 }
 
@@ -306,14 +310,14 @@ bool send_ctrl_update(struct uart_t *dev, bool tx_empty) {
 		UART_TRACE(dev, __LINE__);
 		return true;
 	}
-	
+
 	return false;
 }
 
 void sys_tick_handler(void) {
 	int i;
 	bool update_sent = false;
-	
+
 	for (i = 0; i < sizeof(uarts)/sizeof(uarts[0]); i++) {
 		if (uarts[i].tx_empty_count_down == 0) {
 			if (uarts[i].tx_state == TX_IDLE) {
@@ -516,10 +520,10 @@ static void setup_uart_device(struct uart_t *dev) {
 			exti_enable_request(dev->hardware->ri.pin);
 		}
 	}
-	
+
 	// Finally setup the uart port and enable the USART
 	set_uart_parameters(dev);
-	
+
 	// set the interrupt priorities
 	nvic_set_priority(dev->hardware->irqn, IRQ_PRI_UART);
 	nvic_set_priority(dev->hardware->timer_irqn, IRQ_PRI_UART_TIM);
@@ -530,7 +534,7 @@ static void setup_uart_device(struct uart_t *dev) {
 	nvic_set_priority(dev->hardware->dcd.irqn, IRQ_PRI_EXT_INT);
 	if (dev->hardware->ri.irqn != NVIC_IRQ_COUNT)
 		nvic_set_priority(dev->hardware->ri.irqn, IRQ_PRI_EXT_INT);
-	
+
 	// enable uart RX DMA channel
 	dma_enable_channel(dev->hardware->rx.dma, dev->hardware->rx.channel);
 }
@@ -659,7 +663,7 @@ uint16_t uart_get_control_line_state(struct uart_t *dev) {
 
 	if (!gpio_get(dev->hardware->cts.port, dev->hardware->cts.pin))
 		result |= ACM_CTRL_CTS;
-	
+
 	if (!gpio_get(dev->hardware->dsr.port, dev->hardware->dsr.pin))
 		result |= ACM_CTRL_DSR;
 
@@ -802,7 +806,7 @@ void send_rx(struct uart_t *dev) {
 
 		dev->rx_state &= ~RX_NEED_SERVICE;
 	}
-	
+
 	nvic_enable_irq(dev->hardware->timer_irqn);
 	nvic_enable_irq(dev->hardware->rx.dma_irqn);
 	nvic_enable_irq(dev->hardware->irqn);
@@ -940,7 +944,7 @@ void exti4_isr(void) {
 void exti9_5_isr(void) {
 	uint32_t flags = exti_get_flag_status(EXTI5 | EXTI6 | EXTI7 | EXTI8 | EXTI9);
 	exti_reset_request(EXTI5 | EXTI6 | EXTI7 | EXTI8 | EXTI9);
-	
+
 	if (flags & uarts[1].hardware->ri.pin)
 		schedule_ctrl_update(&uarts[1], false);
 
@@ -967,10 +971,10 @@ void exti15_10_isr(void) {
 		flags & uarts[2].hardware->cts.pin ||
 		flags & uarts[2].hardware->ri.pin)
 		schedule_ctrl_update(&uarts[2], false);
-	
+
 	if (flags & uarts[3].hardware->dsr.pin)
 		schedule_ctrl_update(&uarts[3], false);
-	
+
 }
 
 uint8_t usbuart_get_txempty(struct uart_t *dev)
