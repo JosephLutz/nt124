@@ -32,7 +32,11 @@
 
 #define BOARD_IDENT             "NovaTech USB to serial"
 
-#define SERIALNO_FLASH_LOCATION	0x8001ff0
+#ifdef BOOTLOADER
+#define SERIALNO_FLASH_LOCATION ((char*)0x8001ff0)
+#else
+#define SERIALNO_FLASH_LOCATION "12400000A0\0\0\0\0\0"
+#endif
 
 extern struct uart_t uarts[];
 
