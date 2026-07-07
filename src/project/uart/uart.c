@@ -776,6 +776,8 @@ static void process_rx(struct uart_t *dev) {
 }
 
 void send_rx(struct uart_t *dev) {
+	bool serviced = true;
+
 	nvic_disable_irq(dev->hardware->timer_irqn);
 	nvic_disable_irq(dev->hardware->rx.dma_irqn);
 	nvic_disable_irq(dev->hardware->irqn);
@@ -805,19 +807,21 @@ void send_rx(struct uart_t *dev) {
 			}
 
 			if(usbd_ep_write_packet(usbdev, dev->ep, reply_buf, len+2) == 0) {
-				return;
+				serviced = false;
+			} else {
+				ctrl_update_sent(dev, false);
 			}
-
-			ctrl_update_sent(dev, false);
 
 			dev->usb_in_tx_state = USB_TX_IDLE;
 		}
 
-		// clear and disable the timer
-		timer_clear_flag(dev->hardware->timer, TIM_SR_UIF);
-		timer_disable_irq(dev->hardware->timer, TIM_DIER_UIE);
+		if (serviced) {
+			// clear and disable the timer
+			timer_clear_flag(dev->hardware->timer, TIM_SR_UIF);
+			timer_disable_irq(dev->hardware->timer, TIM_DIER_UIE);
 
-		dev->rx_state &= ~RX_NEED_SERVICE;
+			dev->rx_state &= ~RX_NEED_SERVICE;
+		}
 	}
 	
 	nvic_enable_irq(dev->hardware->timer_irqn);
@@ -966,6 +970,8 @@ void exti9_5_isr(void) {
 		flags & uarts[0].hardware->cts.pin)
 		schedule_ctrl_update(&uarts[0], false);
 
+	// TODO: Determine if there is an error here. It looks like there is one
+	// with &uarts[1] not being &uarts[3]
 	if (flags & uarts[3].hardware->dcd.pin)
 		schedule_ctrl_update(&uarts[1], false);
 }
