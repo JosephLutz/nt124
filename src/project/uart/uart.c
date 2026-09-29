@@ -618,42 +618,61 @@ void usbuart_usb_in_cb3(usbd_device *dev, uint8_t ep) { send_rx(&uarts[2]); (voi
 void usbuart_usb_in_cb4(usbd_device *dev, uint8_t ep) { send_rx(&uarts[3]); (void) dev; (void) ep; }
 
 void usbuart_set_line_coding(struct uart_t *dev, struct usb_cdc_line_coding *coding) {
+	uint32_t new_stopbits = dev->stopbits;
+	uint32_t new_parity = dev->parity;
+	uint8_t new_bits;
+
 	UART_TRACE(dev, __LINE__);
-	dev->baud = coding->dwDTERate;
 	switch(coding->bCharFormat) {
 	case 0:
-		dev->stopbits = USART_STOPBITS_1;
+		new_stopbits = USART_STOPBITS_1;
 		break;
 	case 1:
-		dev->stopbits = USART_STOPBITS_1_5;
+		new_stopbits = USART_STOPBITS_1_5;
 		break;
 	case 2:
-		dev->stopbits = USART_STOPBITS_2;
+		new_stopbits = USART_STOPBITS_2;
 		break;
 	}
 	switch(coding->bParityType) {
 	case 0:
-		dev->parity = USART_PARITY_NONE;
+		new_parity = USART_PARITY_NONE;
 		break;
 	case 1:
-		dev->parity = USART_PARITY_ODD;
+		new_parity = USART_PARITY_ODD;
 		break;
 	case 2:
-		dev->parity = USART_PARITY_EVEN;
+		new_parity = USART_PARITY_EVEN;
 		break;
 	}
 	switch(coding->bDataBits) {
 	case 7:
-		dev->bits = 8;
+		new_bits = 8;
 		break;
 	case 8:
 	default:
-		if (dev->parity == USART_PARITY_NONE)
-			dev->bits = 8;
+		if (new_parity == USART_PARITY_NONE)
+			new_bits = 8;
 		else
-			dev->bits = 9;
+			new_bits = 9;
 		break;
 	}
+
+	/* set_uart_parameters() disables then re-enables the USART (UE 0->1)
+	 * with TE already set, which per the STM32 reference manual sends an
+	 * idle frame as the first thing back out -- a receiver can read that
+	 * idle frame as a spurious 0xFF byte prepended to the next real
+	 * transmission. Skip the whole reconfigure when the host is just
+	 * re-sending the line coding we're already using. */
+	if (coding->dwDTERate == dev->baud && new_stopbits == dev->stopbits &&
+	    new_parity == dev->parity && new_bits == dev->bits) {
+		return;
+	}
+
+	dev->baud = coding->dwDTERate;
+	dev->stopbits = new_stopbits;
+	dev->parity = new_parity;
+	dev->bits = new_bits;
 	/* need to make certain we can change at this time (is DMA finished, lines set at state saying no longer trying to send) */
 	set_uart_parameters(dev);
 }
