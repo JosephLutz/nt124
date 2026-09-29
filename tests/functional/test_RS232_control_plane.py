@@ -1,7 +1,7 @@
 """Control-plane sanity checks -- no peer wiring required.
 
 Run directly:
-    python test_control_plane.py
+    python test_RS232_control_plane.py
 
 Or as part of the whole suite, from tests/:
     python -m unittest discover -s functional -p "test_*.py"

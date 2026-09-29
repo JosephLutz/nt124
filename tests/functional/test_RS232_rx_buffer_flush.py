@@ -2,14 +2,14 @@
 exactly RX_BUFFER_SIZE (29) bytes, filling nt124's RX DMA buffer exactly
 once, and nt124 reads it back. Isolates uart_RX_DMA() + process_rx() +
 send_rx() on the buffer-full trigger specifically, as opposed to the
-idle-gap timer (see test_rx_idle_flush.py) or TX (see test_tx_basic.py).
+idle-gap timer (see test_RS232_rx_idle_flush.py) or TX (see test_RS232_tx_basic.py).
 
 Requires TX/RX wired between each nt124 port and its peer, and the
 transceiver set to a mode that reaches the external bus -- see
 transceiver.py.
 
 Run directly:
-    python test_rx_buffer_flush.py
+    python test_RS232_rx_buffer_flush.py
 """
 import sys
 import unittest

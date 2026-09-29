@@ -10,13 +10,13 @@ retry/failure-handling path (see SEND_RX_LOCKUP_NOTES.md) has shown real
 issues this session. A failure here doesn't mean the board is broadly
 broken -- check tests/functional/ first; if those all pass, a failure here
 narrows the problem to this specific load pattern. For the single-packet,
-low-volume happy path, see tests/functional/test_loopback_small.py.
+low-volume happy path, see tests/functional/test_RS232_loopback_small.py.
 
 Requires TX/RX (and ground) wired between each nt124 port and the peer
 device configured for it in bench.toml.
 
 Run directly:
-    python test_loopback_bulk.py
+    python test_RS232_loopback_bulk.py
 """
 import sys
 import unittest

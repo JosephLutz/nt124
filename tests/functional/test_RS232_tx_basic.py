@@ -9,7 +9,7 @@ its peer, and the transceiver set to a mode that reaches the external bus
 (e.g. rs232) -- see transceiver.py.
 
 Run directly:
-    python test_tx_basic.py
+    python test_RS232_tx_basic.py
 """
 import sys
 import unittest

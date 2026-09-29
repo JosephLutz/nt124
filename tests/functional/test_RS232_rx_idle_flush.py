@@ -9,7 +9,7 @@ transceiver set to a mode that reaches the external bus -- see
 transceiver.py.
 
 Run directly:
-    python test_rx_idle_flush.py
+    python test_RS232_rx_idle_flush.py
 """
 import sys
 import unittest

@@ -8,8 +8,8 @@ the in-kernel driver). Built on the standard-library `unittest` -- no pytest.
   or unresolved (see `../SEND_RX_LOCKUP_NOTES.md`). Once a fix lands and a
   test there passes reliably, move it into `functional/`.
 
-The newer files under `functional/` (`test_tx_basic.py`,
-`test_rx_idle_flush.py`, `test_rx_buffer_flush.py`, `test_loopback_small.py`)
+The newer files under `functional/` (`test_RS232_tx_basic.py`,
+`test_RS232_rx_idle_flush.py`, `test_RS232_rx_buffer_flush.py`, `test_RS232_loopback_small.py`)
 are still being worked on and refined -- don't treat them as a settled
 baseline yet, they just live there because they're narrow and currently
 passing.
@@ -180,26 +180,31 @@ Import it the same way from a script: `from transceiver import Transceivers`.
 
 ## Running tests
 
+Every test except `test_self_loopback.py` needs the transceiver driving the
+external bus (an external-bus mode, e.g. `rs232`) and the 4 peer adapters
+wired per `bench.toml`; `test_self_loopback.py` needs the opposite --
+`loopback` mode and no peer wiring at all. Since a single `unittest
+discover` run can only have one transceiver mode active, the naming
+convention keeps the two from getting mixed into the same run:
+**`test_RS232_*.py`** is everything needing an external-bus mode;
+`test_self_loopback.py` (deliberately not matching that pattern) is the
+one exception.
+
 ```sh
 cd tests
 .vEnv/bin/python3 transceiver.py rs232       # once per board reset/flash
-.vEnv/bin/python3 -m unittest discover -s functional -p "test_*.py" -v
+.vEnv/bin/python3 -m unittest discover -s functional -p "test_RS232_*.py" -v
 ```
-
-`test_control_plane.py` needs only the board, no peer wiring or particular
-transceiver mode. `test_self_loopback.py` needs `loopback` mode specifically
-and no peer wiring; everything else needs the 4 peer adapters wired per
-`bench.toml` and an external-bus mode (`rs232`/etc). Switch modes with
-`transceiver.py` between the two.
 
 Run one file directly (no arguments needed once `bench.toml` exists):
 
 ```sh
-.vEnv/bin/python3 functional/test_control_plane.py
+.vEnv/bin/python3 functional/test_RS232_control_plane.py
 ```
 
-`stress/` runs the same way (`-s stress` instead of `-s functional`).
-`stress/test_rx_backpressure.py` marks its data-loss test
+`stress/` runs the same way (`-s stress -p "test_RS232_*.py"`, since every
+current stress test also needs an external-bus mode).
+`stress/test_RS232_rx_backpressure.py` marks its data-loss test
 `@unittest.expectedFailure` since it documents a known bug -- a normal run
 shows it as an expected failure (`x`), not a red `FAIL`. **Unexpected
 success** there means the underlying bug got fixed; remove the decorator
@@ -211,9 +216,13 @@ calls).
 
 ## Adding a new test scenario
 
-`functional/test_*.py` if it's expected to always pass; `stress/test_*.py`
-if it's chasing a known-broken or unresolved firmware behavior (mark the
-specific method `@unittest.expectedFailure` in that case).
+`functional/` if it's expected to always pass; `stress/` if it's chasing a
+known-broken or unresolved firmware behavior (mark the specific method
+`@unittest.expectedFailure` in that case). Name it `test_RS232_*.py` if it
+needs an external-bus transceiver mode and peer wiring (true for nearly
+everything); leave it as plain `test_*.py` only if, like
+`test_self_loopback.py`, it specifically needs `loopback` mode instead --
+see "Running tests" above for why the naming matters.
 
 Subclass `support.Nt124TestCase` (board only) or `support.PeerTestCase`
 (board + wired peers), copy the 3-line `sys.path` header from an existing
@@ -233,4 +242,4 @@ together for scenarios needing all 4 at once.
 reimplementing something similar. One thing worth knowing:
 `loopback_via_peer` returns `(received, packets, echoed)`, and `echoed` (what
 the peer itself received) is worth checking, not just `received` -- see the
-comment in `functional/test_loopback_small.py` for why.
+comment in `functional/test_RS232_loopback_small.py` for why.

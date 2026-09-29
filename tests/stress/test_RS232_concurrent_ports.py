@@ -4,15 +4,15 @@ load, not just one port at a time. Production always runs all 4 ports at
 once; testing them only sequentially would miss contention on that shared
 poll loop.
 
-STRESS TEST, not baseline: combines bulk volume (see test_loopback_bulk.py)
-with 4-way concurrency. Check tests/functional/ and test_loopback_bulk.py
+STRESS TEST, not baseline: combines bulk volume (see test_RS232_loopback_bulk.py)
+with 4-way concurrency. Check tests/functional/ and test_RS232_loopback_bulk.py
 first; a failure here on top of those passing narrows the problem to
 cross-port contention specifically.
 
 Requires all 4 ports wired to their configured peers in bench.toml.
 
 Run directly:
-    python test_concurrent_ports.py
+    python test_RS232_concurrent_ports.py
 """
 import sys
 import unittest

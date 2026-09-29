@@ -23,7 +23,7 @@ Requires TX/RX wired between port 0 and its peer, and the transceiver set
 to a mode that reaches the external bus.
 
 Run directly:
-    python test_rx_backpressure.py
+    python test_RS232_rx_backpressure.py
 """
 import sys
 import time
@@ -55,7 +55,7 @@ def _induce_backpressure_round_trip(port, peer, pattern, settle=0.5):
 
 class TestRxBackpressure(PeerTestCase):
     """Uses port 0 only -- this is a targeted mechanism test, not a
-    per-port survey; test_loopback_bulk.py covers all 4 ports."""
+    per-port survey; test_RS232_loopback_bulk.py covers all 4 ports."""
 
     @unittest.expectedFailure
     def test_data_loss_under_induced_backpressure(self) -> None:
