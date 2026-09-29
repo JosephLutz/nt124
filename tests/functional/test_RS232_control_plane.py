@@ -24,13 +24,20 @@ class TestControlPlane(Nt124TestCase):
                 self.assertTrue(port.wait_tx_empty(timeout=1.0))
 
     def test_set_line_coding_baud_accepted(self) -> None:
-        for baud in (1200, 9600, 19200, 115200, 230400):
+        # End on 115200 -- the baud every other functional/stress test uses.
+        # Leaving a port on a different baud here means the next test's
+        # SET_LINE_CODING(115200) is a genuine change rather than a no-op
+        # repeat, which still costs one idle-frame byte on the wire (see
+        # SEND_RX_LOCKUP_NOTES.md / the SET_LINE_CODING fix in uart.c).
+        for baud in (1200, 9600, 19200, 115200, 230400, 115200):
             for index, port in self.each_port():
                 with self.subTest(baud=baud, port=index):
                     port.set_line_coding(LineCoding(baud))  # must not raise / STALL
 
     def test_set_line_coding_parity_accepted(self) -> None:
-        for parity in ("n", "o", "e"):
+        # End on "n" -- LineCoding's default, matching every other test.
+        # See the comment in test_set_line_coding_baud_accepted above.
+        for parity in ("n", "o", "e", "n"):
             for index, port in self.each_port():
                 with self.subTest(parity=parity, port=index):
                     port.set_line_coding(LineCoding(115200, parity=parity))
