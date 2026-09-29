@@ -816,10 +816,6 @@ void send_rx(struct uart_t *dev) {
 		}
 
 		if (serviced) {
-			// clear and disable the timer
-			timer_clear_flag(dev->hardware->timer, TIM_SR_UIF);
-			timer_disable_irq(dev->hardware->timer, TIM_DIER_UIE);
-
 			dev->rx_state &= ~RX_NEED_SERVICE;
 		}
 	}
@@ -900,6 +896,14 @@ inline static void uart_RX_timer(struct uart_t *dev) {
 	nvic_disable_irq(dev->hardware->rx.dma_irqn);
 	nvic_disable_irq(dev->hardware->irqn);
 	nvic_disable_irq(dev->hardware->timer_irqn);
+	// Clear our own trigger condition unconditionally, the same way
+	// uart_RX_DMA() clears DMA_TCIF for itself before calling process_rx().
+	// If this is left to send_rx()'s success path instead, a failed send
+	// (host not draining the IN endpoint) leaves TIM_SR_UIF set and
+	// TIM_DIER_UIE enabled while send_rx() unconditionally re-enables
+	// timer_irqn at the NVIC -- an immediate self-retrigger, forever.
+	timer_clear_flag(dev->hardware->timer, TIM_SR_UIF);
+	timer_disable_irq(dev->hardware->timer, TIM_DIER_UIE);
 	UART_TRACE(dev, __LINE__);
 	process_rx(dev);
 	UART_TRACE(dev, __LINE__);
