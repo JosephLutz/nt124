@@ -1,0 +1,14 @@
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "nt124usb"
+version = "0.1.0"
+description = "Low- and high-level libusb access to the NovaTech nt124 USB-to-serial board"
+requires-python = ">=3.9"
+dependencies = ["pyusb>=1.2"]
+
+[tool.setuptools.packages.find]
+where = ["src"]
+include = ["nt124usb*"]

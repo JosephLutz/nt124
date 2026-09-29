@@ -25,3 +25,11 @@
 *.d
 *mapfile
 
+#
+generated.*.ld
+
+# nt124 test suite: bench-specific hardware config, not portable
+tests/bench.toml
+*.egg-info/
+__pycache__/
+

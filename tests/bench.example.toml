@@ -1,0 +1,94 @@
+# Bench wiring config for the nt124 functional test suite.
+#
+# Copy this file to bench.toml (untracked -- it's specific to your physical
+# bench, not the repo) and fill in the real device path for each port's
+# external USB-to-serial adapter.
+#
+# The nt124 port index (0..3) is fixed by the firmware (usb.c uart_lookup[])
+# and never changes. The only bench-specific thing is which serial adapter
+# is physically wired (TX/RX, and RTS/CTS/DTR/DSR/DCD/RI if you're testing
+# modem lines) to that port.
+#
+# Prefer /dev/serial/by-id/... over /dev/ttyUSBn: ttyUSBn numbering is NOT
+# stable across replugs or reboots, but by-id paths are (they're derived
+# from the adapter's USB serial number). List them with:
+#     ls -l /dev/serial/by-id/
+#
+# Identifying which adapter is wired to which nt124 port: there's no way to
+# discover this automatically. Plug in adapters one at a time, or drive one
+# nt124 port at a time with Port.set_control_lines()/send_break() and watch
+# which candidate ttyUSB's DSR/CTS/RI line reacts (a peer.dsr / peer.cts /
+# peer.ri poll loop, or `python -m serial.tools.miniterm --rts 1` sends).
+
+[port.0]
+peer = "/dev/serial/by-id/usb-REPLACE_ME-port0"
+
+[port.1]
+peer = "/dev/serial/by-id/usb-REPLACE_ME-port1"
+
+[port.2]
+peer = "/dev/serial/by-id/usb-REPLACE_ME-port2"
+
+[port.3]
+peer = "/dev/serial/by-id/usb-REPLACE_ME-port3"
+
+# --- Transceiver mode control (see transceiver.py) ------------------------
+#
+# The bench's transceiver card (currently an XRA1203 I2C GPIO expander) is
+# switched between RS232/RS422/RS485/loopback by writing mode/slew/
+# termination bits over I2C, reached through a BusPirate sitting at its
+# text-mode I2C prompt. Everything here is chip- and bench-specific data;
+# transceiver.py has no built-in knowledge of the XRA1203 or what any
+# register means -- swapping to a different chip on a future card is a
+# change to this file, not to the code.
+#
+# Figure out `setup` and each mode's command list by hand once, with a
+# terminal program connected directly to the BusPirate, e.g.:
+#     screen /dev/serial/by-id/usb-...-buspirate 115200
+# Walk it from its boot/reset prompt to the I2C mode prompt, noting exactly
+# what you type for `setup`; then note the bracket I2C commands for each
+# mode you configure. Everything transceiver.py sends is exactly what
+# you'd type there yourself.
+[bus_pirate]
+port = "/dev/serial/by-id/usb-REPLACE_ME-buspirate"
+baud = 115200
+# Raw lines sent, in order, to walk the BusPirate from its boot/reset
+# prompt into the I2C mode prompt the commands below expect: mode menu ->
+# I2C -> speed -> enable the on-board pull-up resistors.
+setup = [
+    "m",   # mode menu
+    "4",   # select I2C
+    "2",   # select speed
+    "P",   # enable pull-up resistors
+]
+
+[bus_pirate.modes]
+# Sets all 4 ports' transceiver pins for RS232 output.
+rs232 = [
+    "[0x40 0x02 0x11]",
+    "[0x40 0x03 0x11]",
+    "[0x40 0x06 0x00]",
+    "[0x40 0x07 0x00]",
+]
+# Sets all 4 ports' transceiver pins for RS422 output.
+rs422 = [
+    "[0x40 0x02 0x33]",
+    "[0x40 0x03 0x33]",
+    "[0x40 0x06 0x00]",
+    "[0x40 0x07 0x00]",
+]
+# Sets all 4 ports' transceiver pins for RS485 output.
+rs485 = [
+    "[0x40 0x02 0x22]",
+    "[0x40 0x03 0x22]",
+    "[0x40 0x06 0x00]",
+    "[0x40 0x07 0x00]",
+]
+# The board's default/idle state (internal chip-level TX->RX loopback) --
+# see test_self_loopback.py.
+loopback = [
+    "[0x40 0x02 0x00]",
+    "[0x40 0x03 0x00]",
+    "[0x40 0x06 0x00]",
+    "[0x40 0x07 0x00]",
+]
