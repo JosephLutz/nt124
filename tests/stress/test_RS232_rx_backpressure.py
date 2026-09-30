@@ -6,10 +6,19 @@ session's debugging (see ../../SEND_RX_LOCKUP_NOTES.md).
 test_data_loss_under_induced_backpressure is a KNOWN, currently-unresolved
 issue -- process_rx() overwrites num_read/rx_dma_index if another
 buffer-full/idle-gap event fires before a previously-failed send is
-retried, silently dropping whatever hadn't been delivered yet. It's marked
+retried, dropping whatever hadn't been delivered yet. It's marked
 @unittest.expectedFailure so a normal stress-suite run doesn't read this as
-a fresh regression. Once that's fixed, unittest will report it as an
-UNEXPECTED SUCCESS -- that's your signal to remove the decorator.
+a fresh regression. The fix for the data loss itself is real flow control
+(RTS back-pressure) -- not yet implemented; see SEND_RX_LOCKUP_NOTES.md.
+Once it is, unittest will report this as an UNEXPECTED SUCCESS -- that's
+your signal to remove the decorator.
+
+test_overrun_flagged_under_induced_backpressure checks a narrower, already
+-fixed property: even though data still gets lost, the loss is no longer
+*silent* -- process_rx() flags RX_OR_ERROR when it's about to overwrite a
+still-pending buffer, and send_rx() now surfaces that as ACM_CTRL_OVERRUN
+in the status header (see SEND_RX_LOCKUP_NOTES.md's "Secondary issue").
+This one is NOT expected to fail.
 
 test_port_recovers_after_backpressure checks a different property: whatever
 data is lost, the port itself should still work normally for a subsequent
@@ -72,6 +81,27 @@ class TestRxBackpressure(PeerTestCase):
         self.assertEqual(received, pattern,
                           f"got back {received!r} instead of the full pattern -- "
                           f"data lost under induced backpressure")
+
+    def test_overrun_flagged_under_induced_backpressure(self) -> None:
+        port, peer = self.board.port(0), self.peers[0]
+        port.set_line_coding(LineCoding(115200))
+        peer.configure(115200)
+        pattern = bytes(i & 0xFF for i in range(64))
+
+        received, packets, peer_saw = _induce_backpressure_round_trip(port, peer, pattern)
+
+        # Induced backpressure is expected to cause data loss here (that's
+        # the separate, still-open issue above) -- what this test checks is
+        # that the loss shows up as ACM_CTRL_OVERRUN on at least one packet,
+        # instead of arriving silently.
+        self.assertLess(len(received), len(pattern),
+                         "expected data loss didn't happen -- backpressure "
+                         "wasn't actually induced, so this isn't testing "
+                         "what it's supposed to")
+        self.assertTrue(any(p.line_error for p in packets),
+                         f"data was lost ({len(received)}/{len(pattern)} bytes) "
+                         f"but no packet flagged a line error -- statuses: "
+                         f"{[p.describe() for p in packets]}")
 
     def test_port_recovers_after_backpressure(self) -> None:
         port, peer = self.board.port(0), self.peers[0]
