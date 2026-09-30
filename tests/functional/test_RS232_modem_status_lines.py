@@ -12,15 +12,15 @@ peer.set_rts()/set_dtr() drive the nt124's CTS/DSR inputs directly, per
 peer.py's Peer.open() comment). DCD and RI are a harder case: standard
 USB-serial adapters (including this bench's peers) only drive RTS/DTR --
 DCD and RI are input-only on both ends of a normal RS-232 link, so nothing
-in this rig can toggle them in software. The one class of interactive test
-here confirms the exti9_5_isr() DCD-routing fix (uart.c) by physically
-unplugging/reconnecting a peer's cable -- a real, if manual, signal change
--- and checking which port the resulting update arrives on, not what value
-it carries (the nt124's DCD/DSR/CTS/RI inputs are floating, GPIO_CNF_INPUT_
-FLOAT with no pull resistor, so the resting level after a disconnect isn't
-guaranteed -- but the EXTI is edge-triggered, so *a* transition firing on
-the right port, and not on the wrong one, is a clean, deterministic check
-regardless of polarity).
+in this rig can toggle them in software. The interactive test class here
+checks DCD routing on each of the 4 ports in turn by physically
+unplugging/reconnecting that port's peer cable -- a real, if manual, signal
+change -- and checking which port the resulting update arrives on, not what
+value it carries (the nt124's DCD/DSR/CTS/RI inputs are floating,
+GPIO_CNF_INPUT_FLOAT with no pull resistor, so the resting level after a
+disconnect isn't guaranteed -- but the EXTI is edge-triggered, so *a*
+transition firing on the right port, and not on any other, is a clean,
+deterministic check regardless of polarity).
 
 Requires TX/RX/RTS/DTR wired between each port and its peer, and the
 transceiver set to a mode that reaches the external bus. The interactive
@@ -110,30 +110,41 @@ class TestModemStatusLines(PeerTestCase):
 @unittest.skipUnless(_INTERACTIVE, "set NT124_INTERACTIVE=1 to run interactive "
                                     "tests that need manual cable action")
 class TestModemStatusLinesInteractive(PeerTestCase):
-    """Regression test for the exti9_5_isr() DCD-routing bug (uart.c):
-    UART4's DCD (ACM port 1, board silkscreen "Port 2") used to schedule its
-    status update on uarts[1]/UART2 (ACM port 3, "Port 4") instead of its
-    own port."""
+    """DCD-routing check, one port at a time -- see module docstring for why
+    this needs a human.
 
-    def test_dcd_change_reported_on_its_own_port_not_a_neighbor(self) -> None:
-        port2, port4 = self.board.port(1), self.board.port(3)
-        _drain(port2)
-        _drain(port4)
+    Originally written as a narrow regression test for the exti9_5_isr()
+    DCD-routing bug (uart.c): UART4's DCD (ACM port 1, board silkscreen
+    "Port 2") used to schedule its status update on uarts[1]/UART2 (ACM
+    port 3, "Port 4") instead of its own port. Broadened to check all 4
+    ports, each against the other 3 -- the other three ports' DCD routing
+    looking correct in uart.c's source was never actually confirmed by a
+    test; nothing else in this suite toggles a DCD line at all."""
 
-        input("\nUnplug (or reconnect) the serial cable at Port 2's peer "
-              "adapter now, then press Enter: ")
+    def test_dcd_change_reported_on_its_own_port_only(self) -> None:
+        ports = self.board.ports()
+        for index in range(4):
+            with self.subTest(port=index):
+                for p in ports:
+                    _drain(p)
 
-        try:
-            port2.read_packet(timeout=2000)
-        except usb.core.USBError:
-            self.fail("Port 2 got no status update at all after its own "
-                      "DCD line changed")
+                input(f"\nUnplug (or reconnect) the serial cable at Port "
+                      f"{index}'s peer adapter now, then press Enter: ")
 
-        with self.assertRaises(usb.core.USBError,
-                                msg="Port 4 received a spurious status update "
-                                    "from Port 2's DCD change -- the EXTI9 "
-                                    "misrouting bug has regressed"):
-            port4.read_packet(timeout=500)
+                try:
+                    ports[index].read_packet(timeout=2000)
+                except usb.core.USBError:
+                    self.fail(f"Port {index} got no status update at all "
+                              f"after its own DCD line changed")
+
+                for other in range(4):
+                    if other == index:
+                        continue
+                    with self.assertRaises(
+                            usb.core.USBError,
+                            msg=f"Port {other} received a spurious status "
+                                f"update from Port {index}'s DCD change"):
+                        ports[other].read_packet(timeout=300)
 
 
 if __name__ == "__main__":

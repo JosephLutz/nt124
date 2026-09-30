@@ -213,6 +213,28 @@ If you skipped the udev rule above, prefix any of these with `sudo -E`
 instead (the `-E` keeps root on your `PATH`/venv for the interface-claiming
 calls).
 
+### Interactive tests (`NT124_INTERACTIVE=1`)
+
+A few things -- so far, DCD/RI input handling -- can't be driven from
+software at all: the bench's peer adapters can only drive RTS/DTR (see
+`test_RS232_modem_status_lines.py`'s module docstring), so testing them
+needs a human to physically unplug/reconnect a cable when prompted.
+Those tests are skipped by default (they'd otherwise hang on `input()`
+during an unattended `unittest discover` run) and only run with
+`NT124_INTERACTIVE=1` set:
+
+```sh
+cd tests
+.vEnv/bin/python3 transceiver.py rs232
+NT124_INTERACTIVE=1 .vEnv/bin/python3 -m unittest \
+    functional.test_RS232_modem_status_lines.TestModemStatusLinesInteractive -v
+```
+
+Run it directly by class/method like this (rather than via `discover`) so
+it's not mixed in with the rest of a normal, unattended run. Follow the
+prompts -- it'll ask you to unplug or reconnect one port's peer cable at a
+time.
+
 ## Adding a new test scenario
 
 `functional/` if it's expected to always pass; `stress/` if it's chasing a
