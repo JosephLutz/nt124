@@ -59,7 +59,6 @@ struct uart_t uarts[] = {
 		.tx_empty_count_down = -1,
 		.tx_empty = true,
 		.ctrl_count_down = -1,
-		.ctrl_update_retries = 0,
 #ifdef UART_TRACE_ENABLED
 		.trace_count = 0,
 #endif
@@ -87,7 +86,6 @@ struct uart_t uarts[] = {
 		.tx_empty_count_down = -1,
 		.tx_empty = true,
 		.ctrl_count_down = -1,
-		.ctrl_update_retries = 0,
 #ifdef UART_TRACE_ENABLED
 		.trace_count = 0,
 #endif
@@ -115,7 +113,6 @@ struct uart_t uarts[] = {
 		.tx_empty_count_down = -1,
 		.tx_empty = true,
 		.ctrl_count_down = -1,
-		.ctrl_update_retries = 0,
 #ifdef UART_TRACE_ENABLED
 		.trace_count = 0,
 #endif
@@ -143,7 +140,6 @@ struct uart_t uarts[] = {
 		.tx_empty_count_down = -1,
 		.tx_empty = true,
 		.ctrl_count_down = -1,
-		.ctrl_update_retries = 0,
 #ifdef UART_TRACE_ENABLED
 		.trace_count = 0,
 #endif
@@ -300,11 +296,13 @@ static bool send_ctrl_update(struct uart_t *dev, bool tx_empty) {
 			reply |= ACM_CTRL_TXEMPTY;
 
 		if (usbd_ep_write_packet(usbdev, dev->ep, &reply, 2) == 0) {
-			dev->ctrl_update_retries++;
-			if( dev->ctrl_update_retries < 50 )
-				return false;
+			/* IN endpoint still busy -- try again next tick. Unlike
+			 * RX data, there's no fixed-size buffer at risk here
+			 * (the reply is always recomputed live from current
+			 * state), so just keep retrying until it goes through
+			 * instead of giving up and claiming it was sent. */
+			return false;
 		}
-		dev->ctrl_update_retries = 0;
 
 		raw_ctrl_update_sent(dev, tx_empty);
 		UART_TRACE(dev, __LINE__);
