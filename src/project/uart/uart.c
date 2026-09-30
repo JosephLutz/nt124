@@ -858,6 +858,15 @@ void send_rx(struct uart_t *dev) {
 			}
 
 			dev->usb_in_tx_state = USB_TX_IDLE;
+		} else {
+			/* Not configured (e.g. mid-enumeration, or between a
+			 * SET_CONFIGURATION(0) and the host reconfiguring) --
+			 * there's nowhere to deliver this buffer right now.
+			 * Leave RX_NEED_SERVICE set so it's retried once
+			 * configured again, the same as a failed
+			 * usbd_ep_write_packet(), instead of silently dropping
+			 * the data and its error flags below. */
+			serviced = false;
 		}
 
 		if (serviced) {
