@@ -3,14 +3,14 @@ back, nt124 reads -- at 4096 and 65536 bytes, well past a single packet.
 Each port is checked independently via subTest, so one port's failure is
 reported on its own without hiding or aborting the rest.
 
-STRESS TEST, not baseline: this pushes real volume through the full round
-trip (bulk OUT -> UART TX -> DMA -> transceiver -> UART RX -> DMA ->
-send_rx -> bulk IN), which is exactly the load under which send_rx()'s
-retry/failure-handling path (see SEND_RX_LOCKUP_NOTES.md) has shown real
-issues this session. A failure here doesn't mean the board is broadly
-broken -- check tests/functional/ first; if those all pass, a failure here
-narrows the problem to this specific load pattern. For the single-packet,
-low-volume happy path, see tests/functional/test_RS232_loopback_small.py.
+Pushes real volume through the full round trip (bulk OUT -> UART TX -> DMA
+-> transceiver -> UART RX -> DMA -> send_rx -> bulk IN). Was in
+tests/stress/ while the SET_LINE_CODING idle-frame bug (see
+SEND_RX_LOCKUP_NOTES.md and the fix in uart.c) made it flaky on port 2;
+moved here once that fix made it reliably pass. For the single-packet,
+low-volume happy path, see test_RS232_loopback_small.py. For deliberately
+induced backpressure (a separate, still-open issue), see
+tests/stress/test_RS232_rx_backpressure.py.
 
 Requires TX/RX (and ground) wired between each nt124 port and the peer
 device configured for it in bench.toml.

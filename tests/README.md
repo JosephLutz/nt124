@@ -8,11 +8,11 @@ the in-kernel driver). Built on the standard-library `unittest` -- no pytest.
   or unresolved (see `../SEND_RX_LOCKUP_NOTES.md`). Once a fix lands and a
   test there passes reliably, move it into `functional/`.
 
-The newer files under `functional/` (`test_RS232_tx_basic.py`,
-`test_RS232_rx_idle_flush.py`, `test_RS232_rx_buffer_flush.py`, `test_RS232_loopback_small.py`)
-are still being worked on and refined -- don't treat them as a settled
-baseline yet, they just live there because they're narrow and currently
-passing.
+`test_RS232_loopback_bulk.py` and `test_RS232_concurrent_ports.py` moved
+here from `stress/` once the SET_LINE_CODING idle-frame bug that made them
+flaky on port 2 was fixed (see `../SEND_RX_LOCKUP_NOTES.md` and the fix in
+uart.c) -- only `test_RS232_rx_backpressure.py` remains in `stress/` now,
+covering a separate, still-open issue.
 
 ## Layout
 

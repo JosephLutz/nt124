@@ -4,10 +4,12 @@ load, not just one port at a time. Production always runs all 4 ports at
 once; testing them only sequentially would miss contention on that shared
 poll loop.
 
-STRESS TEST, not baseline: combines bulk volume (see test_RS232_loopback_bulk.py)
-with 4-way concurrency. Check tests/functional/ and test_RS232_loopback_bulk.py
-first; a failure here on top of those passing narrows the problem to
-cross-port contention specifically.
+Combines bulk volume (see test_RS232_loopback_bulk.py) with 4-way
+concurrency. Was in tests/stress/ while the SET_LINE_CODING idle-frame bug
+(see SEND_RX_LOCKUP_NOTES.md and the fix in uart.c) made it flaky on port 2;
+moved here once that fix made it reliably pass. A failure here on top of
+test_RS232_loopback_bulk.py passing narrows the problem to cross-port
+contention specifically.
 
 Requires all 4 ports wired to their configured peers in bench.toml.
 
