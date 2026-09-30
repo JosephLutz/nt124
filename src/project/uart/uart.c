@@ -778,6 +778,16 @@ void UART3_TX_DMA_ISR(void) { uart_TX_DMA_empty(&uarts[2]); }
 void UART4_TX_DMA_ISR(void) { uart_TX_DMA_empty(&uarts[3]); }
 
 static void process_rx(struct uart_t *dev) {
+	// If RX_NEED_SERVICE is still set, send_rx() hasn't managed to deliver
+	// the previous buffer yet -- but DMA has already been re-armed into
+	// the other buffer regardless of that (see uart_RX_DMA/uart_RX_timer),
+	// so num_read/rx_dma_index below are about to be overwritten and that
+	// pending buffer's data lost. There are only 2 physical rx_buffer
+	// slots and nowhere to hold a 3rd buffer's worth, so flag it as an
+	// overrun rather than silently losing it with no trace.
+	if (dev->rx_state & RX_NEED_SERVICE)
+		dev->rx_state |= RX_OR_ERROR;
+
 	// get the number of characters read
 	dev->num_read = RX_BUFFER_SIZE - DMA_CNDTR(dev->hardware->rx.dma, dev->hardware->rx.channel);
 	// reset the DMA with the other buffer
@@ -810,6 +820,17 @@ void send_rx(struct uart_t *dev) {
 
 			dev->usb_in_tx_state = USB_TX_WORKING;
 			ctrl_state = uart_get_control_line_state(dev);
+			/* Surface line errors accumulated since the last successfully
+			 * delivered packet -- dev->rx_state tracked these already but
+			 * nothing ever reported them to the host. No ACM_CTRL_* bit
+			 * exists for RX_N_ERROR (noise); it's cleared below with the
+			 * others but not reportable here. */
+			if (dev->rx_state & RX_F_ERROR)
+				ctrl_state |= ACM_CTRL_FRAMING;
+			if (dev->rx_state & RX_P_ERROR)
+				ctrl_state |= ACM_CTRL_PARITY;
+			if (dev->rx_state & RX_OR_ERROR)
+				ctrl_state |= ACM_CTRL_OVERRUN;
 			reply_buf[0] = (uint8_t)(ctrl_state & 0xff);
 			reply_buf[1] = (uint8_t)(ctrl_state >> 8);
 
@@ -835,7 +856,8 @@ void send_rx(struct uart_t *dev) {
 		}
 
 		if (serviced) {
-			dev->rx_state &= ~RX_NEED_SERVICE;
+			dev->rx_state &= ~(RX_NEED_SERVICE | RX_P_ERROR | RX_F_ERROR |
+					    RX_N_ERROR | RX_OR_ERROR);
 		}
 	}
 	
