@@ -357,8 +357,13 @@ static void set_uart_parameters(struct uart_t *dev) {
 	UART_TRACE(dev, __LINE__);
 	for (index = sizeof(tim_table)/sizeof(tim_table[0]) - 1; index >= 0; index--) {
 		// Loop from fastest baud to slowest baud
-		// look for baud value >= to the baud at index
-		if (dev->baud < baud_list[index]) {
+		// look for baud value >= to the baud at index. index 0 (the
+		// slowest table entry) always matches on its turn regardless,
+		// flooring anything below it (e.g. a requested baud < 300) to
+		// the slowest supported baud instead of leaving the loop with
+		// index == -1, which left dev->baud_index == -1 and was used
+		// later to index ctrl_delay[]/tx_empty_delay[] out of bounds.
+		if (index > 0 && dev->baud < baud_list[index]) {
 			continue;
 		}
 		dev->baud = baud_list[index];
