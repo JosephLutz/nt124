@@ -4,13 +4,11 @@ Each port is checked independently via subTest, so one port's failure is
 reported on its own without hiding or aborting the rest.
 
 Pushes real volume through the full round trip (bulk OUT -> UART TX -> DMA
--> transceiver -> UART RX -> DMA -> send_rx -> bulk IN). Was in
-tests/stress/ while the SET_LINE_CODING idle-frame bug (see
-SEND_RX_LOCKUP_NOTES.md and the fix in uart.c) made it flaky on port 2;
-moved here once that fix made it reliably pass. For the single-packet,
-low-volume happy path, see test_RS232_loopback_small.py. For deliberately
-induced backpressure (a separate, still-open issue), see
-tests/stress/test_RS232_rx_backpressure.py.
+-> transceiver -> UART RX -> DMA -> send_rx -> bulk IN). Used to be flaky
+on port 2 because of a SET_LINE_CODING idle-frame bug, fixed in
+usbuart_set_line_coding() (uart.c). For the single-packet, low-volume
+happy path, see test_RS232_loopback_small.py. For deliberately induced
+backpressure, see test_RS232_rx_backpressure.py.
 
 Requires TX/RX (and ground) wired between each nt124 port and the peer
 device configured for it in bench.toml.

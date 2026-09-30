@@ -3,20 +3,18 @@
 Hardware-in-the-loop tests for the nt124 firmware, over raw USB (bypassing
 the in-kernel driver). Built on the standard-library `unittest` -- no pytest.
 
-- **`functional/`** -- tests we trust: they pass reliably.
-- **`stress/`** -- tests for firmware behavior we know is currently broken
-  or unresolved (see `../SEND_RX_LOCKUP_NOTES.md`). Once a fix lands and a
-  test there passes reliably, move it into `functional/`.
+`functional/` holds the whole suite -- tests we trust to pass reliably.
 
-`test_RS232_loopback_bulk.py` and `test_RS232_concurrent_ports.py` moved
-here from `stress/` once the SET_LINE_CODING idle-frame bug that made them
-flaky on port 2 was fixed (see `../SEND_RX_LOCKUP_NOTES.md` and the fix in
-uart.c). `test_RS232_rx_backpressure.py` moved here the same way once the
-RX-buffer-overwrite issue it exercises was resolved into a final, accepted
-design (detect-and-report the data loss; real RTS/CTS flow control was
-considered and rejected since the end devices don't honor it -- see
-`../SEND_RX_LOCKUP_NOTES.md`'s "Secondary issue"). `stress/` is currently
-empty, awaiting the next behavior that's still actually unresolved.
+Two things worth knowing about firmware behavior these tests pin down:
+`usbuart_set_line_coding()` (uart.c) used to emit a spurious idle-frame
+byte on the wire on every SET_LINE_CODING request; it now skips the USART
+reconfigure entirely when the host resends a line coding that's already
+in effect, since that reconfigure is what caused the glitch. And the
+RX-buffer-overwrite issue `test_RS232_rx_backpressure.py` exercises was
+resolved into a final, accepted design: detect and report the data loss
+via a status-header flag (`process_rx()`/`send_rx()`, uart.c); real
+RTS/CTS flow control to prevent it was considered and rejected since the
+end devices don't honor RTS/CTS at all.
 
 ## Layout
 
@@ -31,8 +29,7 @@ tests/
   bench.example.toml   copy to bench.toml and fill in your bench's wiring
   bench.toml           (not committed) your bench's actual config
   .vEnv/               (not committed) virtualenv -- see One-time setup
-  functional/           tests we trust
-  stress/               known-broken/unresolved firmware behavior
+  functional/           the test suite
 ```
 
 ## One-time setup
@@ -206,9 +203,6 @@ Run one file directly (no arguments needed once `bench.toml` exists):
 .vEnv/bin/python3 functional/test_RS232_control_plane.py
 ```
 
-`stress/` (currently empty) runs the same way (`-s stress -p
-"test_RS232_*.py"`) once a new unresolved behavior lands there.
-
 If you skipped the udev rule above, prefix any of these with `sudo -E`
 instead (the `-E` keeps root on your `PATH`/venv for the interface-claiming
 calls).
@@ -237,13 +231,14 @@ time.
 
 ## Adding a new test scenario
 
-`functional/` if it's expected to always pass; `stress/` if it's chasing a
-known-broken or unresolved firmware behavior (mark the specific method
-`@unittest.expectedFailure` in that case). Name it `test_RS232_*.py` if it
-needs an external-bus transceiver mode and peer wiring (true for nearly
-everything); leave it as plain `test_*.py` only if, like
-`test_self_loopback.py`, it specifically needs `loopback` mode instead --
-see "Running tests" above for why the naming matters.
+Add new test files to `functional/`. If a test is chasing a known-broken or
+unresolved firmware behavior rather than confirming a fix, mark the
+specific method `@unittest.expectedFailure` so a normal run reports it as
+an expected failure rather than a regression. Name the file
+`test_RS232_*.py` if it needs an external-bus transceiver mode and peer
+wiring (true for nearly everything); leave it as plain `test_*.py` only
+if, like `test_self_loopback.py`, it specifically needs `loopback` mode
+instead -- see "Running tests" above for why the naming matters.
 
 Subclass `support.Nt124TestCase` (board only) or `support.PeerTestCase`
 (board + wired peers), copy the 3-line `sys.path` header from an existing

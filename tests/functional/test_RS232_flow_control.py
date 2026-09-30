@@ -8,14 +8,18 @@ The bench's null-modem crossover means the peer's own RTS output drives the
 nt124 port's CTS input (see peer.py's Peer.open() comment) -- so
 peer.set_rts(False) is how these tests deassert the nt124's CTS.
 
-Hardware auto-CTS only actually works on ports 2 and 3 (UART3/UART2) --
-confirmed while building this test, see SEND_RX_LOCKUP_NOTES.md's "Newly
-discovered issues". Port 1 (UART4) has no CTS/RTS pins in silicon at all
-(a simplified UART, not a full USART), and port 0 (UART1)'s CTS pin is
-wired to a plain GPIO rather than USART1's actual hardware CTS pin.
-Neither is fixed yet, so this file tests the capable ports (2/3) for the
-real pausing behavior and the other two (0/1) only for "enabling flow
-control doesn't break anything", not for an effect it can't have.
+Hardware auto-CTS only actually works on ports 2 and 3 (UART3/UART2). Port
+1 (UART4) has no CTS/RTS pins in silicon at all (a simplified UART, not a
+full USART), and port 0 (UART1)'s CTS pin is wired to a plain GPIO rather
+than USART1's actual hardware CTS pin. This asymmetry is a decided,
+permanent characteristic of this board, not a bug being tracked for a fix:
+the kernel driver only ever enables this (via the standard Linux CRTSCTS
+termios flag) at an application's explicit request, and unifying it
+across all 4 ports would mean adding a new software-emulated TX-pause
+mechanism for two ports that have never needed one. So this file tests
+the capable ports (2/3) for the real pausing behavior, and the other two
+(0/1) for the opposite: flow control enabled there must have *no* effect
+on TX.
 
 Requires TX/RX (and RTS/CTS) wired between each port and its peer, and the
 transceiver set to a mode that reaches the external bus.

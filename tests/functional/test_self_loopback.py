@@ -1,6 +1,7 @@
 """On-board self-loopback: nt124 writes a small pattern out a port and reads
 it back on that SAME port, with no external peer adapter involved at all.
-Baseline check; volume testing isn't in scope here -- see tests/stress/.
+Baseline check; volume testing isn't in scope here -- see
+test_RS232_loopback_bulk.py.
 
 This only produces useful data while the port's transceiver is set to the
 "loopback" mode in bench.toml's [bus_pirate.modes] (TX shorted back to RX
@@ -51,8 +52,9 @@ class TestSelfLoopback(Nt124TestCase):
 
     def test_self_loopback_pattern_intact(self) -> None:
         # Small sizes only: one under RX_BUFFER_SIZE (idle-timer flush) and
-        # one exactly at it (DMA buffer-full flush). Volume/backpressure
-        # testing is out of scope here -- see tests/stress/.
+        # one exactly at it (DMA buffer-full flush). Volume testing is
+        # test_RS232_loopback_bulk.py; backpressure/overrun behavior is
+        # test_RS232_rx_backpressure.py.
         for size in (16, 29):
             for index, port in self.each_port():
                 with self.subTest(size=size, port=index):

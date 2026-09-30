@@ -10,10 +10,10 @@ every other field set to an invalid value, then round-trip at the new baud
 using the *previous* stopbits/parity/databits -- if the firmware had
 instead corrupted or defaulted them, the peer's mismatched framing would
 show up as garbled data or a line-error flag. A genuine baud change is
-still allowed to emit one idle-frame glitch byte on the wire (see
-SEND_RX_LOCKUP_NOTES.md and the SET_LINE_CODING fix in uart.c -- only a
-*redundant* resend is glitch-free, see test_RS232_line_coding_redundant.py)
-so a small throwaway transfer absorbs that before the real comparison.
+still allowed to emit one idle-frame glitch byte on the wire (only a
+*redundant* resend is glitch-free, see usbuart_set_line_coding() in
+uart.c and test_RS232_line_coding_redundant.py) so a small throwaway
+transfer absorbs that before the real comparison.
 
 set_uart_parameters()'s baud-lookup loop used to be able to exit with its
 index left at -1 for any requested baud below the slowest table entry
@@ -24,8 +24,8 @@ regression test for that fix's control-plane-safety half -- request a few
 sub-300 bauds and confirm the device stays responsive throughout.
 Concretely confirming the *flooring* behavior with real data at 300 baud
 isn't done here: 300 baud has a separate, pre-existing data-integrity bug
-of its own (see SEND_RX_LOCKUP_NOTES.md's "Newly discovered issues"),
-unrelated to this fix, not yet resolved.
+of its own, unrelated to this fix and not yet resolved -- 1200 baud and
+up all round-trip correctly, only 300 baud doesn't.
 
 Requires TX/RX wired between each port and its peer, and the transceiver
 set to a mode that reaches the external bus.

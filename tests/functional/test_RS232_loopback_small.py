@@ -1,8 +1,9 @@
 """Small, single-packet full round trip: nt124 writes, the peer echoes
-back, nt124 reads -- the same mechanism as tests/stress/test_RS232_loopback_bulk.py,
+back, nt124 reads -- the same mechanism as test_RS232_loopback_bulk.py,
 but with a payload small enough (well under RX_BUFFER_SIZE) to stay on the
 simple, single-packet happy path. This is the baseline round-trip check;
-volume/backpressure testing lives in tests/stress/.
+volume testing is test_RS232_loopback_bulk.py, backpressure/overrun
+behavior is test_RS232_rx_backpressure.py.
 
 Requires TX/RX wired between each nt124 port and its peer, and the
 transceiver set to a mode that reaches the external bus -- see

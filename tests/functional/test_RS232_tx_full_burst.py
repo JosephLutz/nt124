@@ -8,8 +8,8 @@ sends payloads small/slow enough (or paced via a single blocking write)
 that this path is never exercised. Forcing it here: a low baud rate (1200)
 makes the wire drain slowly enough that 3 back-to-back 32-byte packets
 reliably outrun it. (Not 300 -- that baud has its own separate,
-pre-existing data-integrity bug, unrelated to TX_FULL; see
-SEND_RX_LOCKUP_NOTES.md's "Newly discovered issues".)
+pre-existing, unresolved data-integrity bug, unrelated to TX_FULL: 1200
+baud and up all round-trip correctly, only 300 baud doesn't.)
 
 This checks correctness through that specific path (no corruption or
 reordering across the parked-packet handoff and the buffer-index
@@ -44,8 +44,8 @@ class TestTxFullBurst(PeerTestCase):
                 port.set_line_coding(LineCoding(1200))
                 peer.configure(1200)
                 # A genuine reconfigure is allowed one idle-frame glitch
-                # byte on the wire (see SEND_RX_LOCKUP_NOTES.md) -- give it
-                # time to arrive before flushing it away.
+                # byte on the wire -- give it time to arrive before
+                # flushing it away.
                 time.sleep(0.05)
                 peer.flush_input()
 

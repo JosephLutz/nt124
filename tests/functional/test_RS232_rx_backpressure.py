@@ -1,13 +1,12 @@
 """Deliberate backpressure fault-injection: writes fully, then waits before
 draining the IN endpoint at all -- forcing usbd_ep_write_packet() to fail
-inside send_rx(). This formalizes the manual reproduction from this
-session's debugging (see ../SEND_RX_LOCKUP_NOTES.md).
+inside send_rx(). This formalizes a manual reproduction of a real,
+confirmed-on-hardware issue.
 
 The nt124 has only 2 physical RX buffers (rx_buffer[NUM_RX_BUFFERS], see
 uart.c). If the USB host doesn't drain the IN endpoint before both buffers
 fill/idle-flush, process_rx() overwrites the still-undelivered buffer and
-some received data is lost. Two ways to address this were considered (see
-SEND_RX_LOCKUP_NOTES.md's "Secondary issue"):
+some received data is lost. Two ways to address this were considered:
 
 1. Detect and report (done, commit d4a51d3) -- process_rx() flags
    RX_OR_ERROR when it's about to overwrite a still-pending buffer, and
@@ -21,9 +20,7 @@ SEND_RX_LOCKUP_NOTES.md's "Secondary issue"):
 So data loss under sustained backpressure is accepted, permanent behavior
 on this firmware, not an open bug to track -- what matters, and what these
 tests confirm, is that the loss is always visible to the host (never
-silent) and that the port keeps working normally afterward. This file
-moved here from stress/ once that decision made the behavior final rather
-than pending a fix.
+silent) and that the port keeps working normally afterward.
 
 test_data_loss_is_flagged_under_induced_backpressure confirms both halves
 of the accepted behavior at once: backpressure was actually induced (some

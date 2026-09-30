@@ -12,7 +12,7 @@ at the peer with no spurious leading byte. (Deliberately not also asserting
 that a *genuine* change still glitches once -- that side was already
 verified via multi-trial hardware testing during the original fix and isn't
 a deterministic, single-shot assertion suitable for a suite that's meant to
-pass reliably; see SEND_RX_LOCKUP_NOTES.md.)
+pass reliably.)
 
 Requires TX/RX wired between each port and its peer, and the transceiver
 set to a mode that reaches the external bus.

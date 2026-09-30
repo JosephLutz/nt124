@@ -58,10 +58,10 @@ class TestLineCodingMatrix(PeerTestCase):
                     # only stopbits/parity/databits change, not baud) --
                     # set_uart_parameters() disables/re-enables the USART
                     # for any of them, which is allowed one idle-frame
-                    # glitch byte on the wire (see SEND_RX_LOCKUP_NOTES.md).
-                    # Give it time to actually arrive, then flush it away,
-                    # rather than flushing too early and racing a delayed
-                    # byte into the real comparison below.
+                    # glitch byte on the wire. Give it time to actually
+                    # arrive, then flush it away, rather than flushing too
+                    # early and racing a delayed byte into the real
+                    # comparison below.
                     time.sleep(0.05)
                     peer.flush_input()
                     received, packets, echoed = loopback_via_peer(port, peer, pattern)
