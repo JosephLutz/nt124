@@ -82,6 +82,21 @@ class RawPort:
         return bytes(self.device.ctrl_transfer(_CTRL_IN_VENDOR, request, value,
                                                  self.info.index, length))
 
+    def raw_ctrl_transfer(self, bmRequestType: int, bRequest: int, wValue: int = 0,
+                           wIndex: int | None = None, data_or_wLength=None):
+        """Escape hatch for malformed/edge-case control transfers -- wrong
+        wIndex, wrong direction/type, short/long wLength -- that ctrl_out()/
+        ctrl_in()'s fixed vendor type and this port's own wIndex can't
+        express. Defaults wIndex to this port's own index for convenience;
+        pass an explicit one (e.g. out of range, or another port's) to test
+        boundary handling. Raises usb.core.USBError on a STALL, same as a
+        raw pyusb ctrl_transfer() would."""
+        if wIndex is None:
+            wIndex = self.info.index
+        result = self.device.ctrl_transfer(bmRequestType, bRequest, wValue,
+                                            wIndex, data_or_wLength)
+        return bytes(result) if bmRequestType & usb.util.CTRL_IN else result
+
     # -- bulk transfers ---------------------------------------------------
     def bulk_write(self, data: bytes, timeout: int = 2000) -> int:
         return self.device.write(self.info.ep_out, data, timeout=timeout)

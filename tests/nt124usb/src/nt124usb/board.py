@@ -98,6 +98,13 @@ class Port:
     def set_line_coding(self, coding: LineCoding) -> None:
         self._raw.ctrl_out(proto.REQ_SET_LINE_CODING, 0, coding.to_bytes())
 
+    def set_line_coding_raw(self, data: bytes) -> None:
+        """Send an arbitrary SET_LINE_CODING payload directly, bypassing
+        LineCoding's valid-values-only encoding -- for testing the
+        firmware's handling of out-of-spec bCharFormat/bParityType/
+        bDataBits values or a malformed (e.g. too-short) payload length."""
+        self._raw.ctrl_out(proto.REQ_SET_LINE_CODING, 0, data)
+
     def set_control_lines(self, dtr: bool = True, rts: bool = True) -> None:
         value = (proto.CTRL_DTR if dtr else 0) | (proto.CTRL_RTS if rts else 0)
         self._raw.ctrl_out(proto.REQ_SET_CONTROL_LINE_STATE, value)
@@ -107,6 +114,14 @@ class Port:
 
     def send_break(self) -> None:
         self._raw.ctrl_out(proto.REQ_SEND_BREAK, 0xFFFF)
+
+    def raw_ctrl_transfer(self, bmRequestType: int, bRequest: int, wValue: int = 0,
+                           wIndex: int | None = None, data_or_wLength=None):
+        """Escape hatch for malformed/edge-case control transfers the other
+        methods on this class can't express -- see RawPort.raw_ctrl_transfer.
+        """
+        return self._raw.raw_ctrl_transfer(bmRequestType, bRequest, wValue,
+                                            wIndex, data_or_wLength)
 
     def tx_empty(self) -> bool:
         reply = self._raw.ctrl_in(proto.REQ_GET_TXEMPTY, 0, 1)
@@ -168,6 +183,21 @@ class Board:
 
     def ports(self) -> list[Port]:
         return [self.port(i) for i in range(proto.NUM_PORTS)]
+
+    def release_all(self) -> None:
+        """Release every currently-open port's claimed interface, without
+        forgetting which ports were open -- for tests that need to call
+        usb.core.Device.set_configuration() directly, which (per RawPort.
+        claim()'s own comment) resets every endpoint on all 4 ports at
+        once and requires interfaces not be claimed while it happens.
+        Normal use should never need this; pair with reclaim_all()."""
+        for p in self._ports.values():
+            p._raw.release()
+
+    def reclaim_all(self) -> None:
+        """Re-claim every port released by release_all()."""
+        for p in self._ports.values():
+            p._raw.claim()
 
     def close(self) -> None:
         for p in self._ports.values():
