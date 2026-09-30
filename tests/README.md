@@ -11,8 +11,12 @@ the in-kernel driver). Built on the standard-library `unittest` -- no pytest.
 `test_RS232_loopback_bulk.py` and `test_RS232_concurrent_ports.py` moved
 here from `stress/` once the SET_LINE_CODING idle-frame bug that made them
 flaky on port 2 was fixed (see `../SEND_RX_LOCKUP_NOTES.md` and the fix in
-uart.c) -- only `test_RS232_rx_backpressure.py` remains in `stress/` now,
-covering a separate, still-open issue.
+uart.c). `test_RS232_rx_backpressure.py` moved here the same way once the
+RX-buffer-overwrite issue it exercises was resolved into a final, accepted
+design (detect-and-report the data loss; real RTS/CTS flow control was
+considered and rejected since the end devices don't honor it -- see
+`../SEND_RX_LOCKUP_NOTES.md`'s "Secondary issue"). `stress/` is currently
+empty, awaiting the next behavior that's still actually unresolved.
 
 ## Layout
 
@@ -202,13 +206,8 @@ Run one file directly (no arguments needed once `bench.toml` exists):
 .vEnv/bin/python3 functional/test_RS232_control_plane.py
 ```
 
-`stress/` runs the same way (`-s stress -p "test_RS232_*.py"`, since every
-current stress test also needs an external-bus mode).
-`stress/test_RS232_rx_backpressure.py` marks its data-loss test
-`@unittest.expectedFailure` since it documents a known bug -- a normal run
-shows it as an expected failure (`x`), not a red `FAIL`. **Unexpected
-success** there means the underlying bug got fixed; remove the decorator
-and consider moving that test into `functional/`.
+`stress/` (currently empty) runs the same way (`-s stress -p
+"test_RS232_*.py"`) once a new unresolved behavior lands there.
 
 If you skipped the udev rule above, prefix any of these with `sudo -E`
 instead (the `-E` keeps root on your `PATH`/venv for the interface-claiming

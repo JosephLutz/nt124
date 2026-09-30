@@ -1,32 +1,38 @@
 """Deliberate backpressure fault-injection: writes fully, then waits before
 draining the IN endpoint at all -- forcing usbd_ep_write_packet() to fail
 inside send_rx(). This formalizes the manual reproduction from this
-session's debugging (see ../../SEND_RX_LOCKUP_NOTES.md).
+session's debugging (see ../SEND_RX_LOCKUP_NOTES.md).
 
-test_data_loss_under_induced_backpressure is a KNOWN, currently-unresolved
-issue -- process_rx() overwrites num_read/rx_dma_index if another
-buffer-full/idle-gap event fires before a previously-failed send is
-retried, dropping whatever hadn't been delivered yet. It's marked
-@unittest.expectedFailure so a normal stress-suite run doesn't read this as
-a fresh regression. The fix for the data loss itself is real flow control
-(RTS back-pressure) -- not yet implemented; see SEND_RX_LOCKUP_NOTES.md.
-Once it is, unittest will report this as an UNEXPECTED SUCCESS -- that's
-your signal to remove the decorator.
+The nt124 has only 2 physical RX buffers (rx_buffer[NUM_RX_BUFFERS], see
+uart.c). If the USB host doesn't drain the IN endpoint before both buffers
+fill/idle-flush, process_rx() overwrites the still-undelivered buffer and
+some received data is lost. Two ways to address this were considered (see
+SEND_RX_LOCKUP_NOTES.md's "Secondary issue"):
 
-test_overrun_flagged_under_induced_backpressure checks a narrower, already
--fixed property: even though data still gets lost, the loss is no longer
-*silent* -- process_rx() flags RX_OR_ERROR when it's about to overwrite a
-still-pending buffer, and send_rx() now surfaces that as ACM_CTRL_OVERRUN
-in the status header (see SEND_RX_LOCKUP_NOTES.md's "Secondary issue").
-This one is NOT expected to fail.
+1. Detect and report (done, commit d4a51d3) -- process_rx() flags
+   RX_OR_ERROR when it's about to overwrite a still-pending buffer, and
+   send_rx() surfaces RX_F_ERROR/RX_P_ERROR/RX_OR_ERROR as
+   ACM_CTRL_FRAMING/PARITY/OVERRUN in the status header.
+2. Real flow control (RTS back-pressure) -- considered and REJECTED
+   2026-09-30: the end devices this board talks to don't honor RTS/CTS at
+   all, so firmware toggling RTS autonomously would have no effect on
+   them. RTS/CTS stays 100% host-driven (usbuart_set_control_line_state()).
+
+So data loss under sustained backpressure is accepted, permanent behavior
+on this firmware, not an open bug to track -- what matters, and what these
+tests confirm, is that the loss is always visible to the host (never
+silent) and that the port keeps working normally afterward. This file
+moved here from stress/ once that decision made the behavior final rather
+than pending a fix.
+
+test_data_loss_is_flagged_under_induced_backpressure confirms both halves
+of the accepted behavior at once: backpressure was actually induced (some
+data really was lost), and that loss shows up as a line-error flag on at
+least one packet rather than arriving silently.
 
 test_port_recovers_after_backpressure checks a different property: whatever
 data is lost, the port itself should still work normally for a subsequent
-transfer afterward, rather than being left permanently stuck. This is NOT
-expected to fail on firmware built from master (68337af's interrupt
-re-enable keeps the port alive); it IS expected to fail on the reverted
-(pre-68337af) version, which leaves that port's RX interrupts disabled
-until reboot on the very first failure.
+transfer afterward, rather than being left permanently stuck.
 
 Requires TX/RX wired between port 0 and its peer, and the transceiver set
 to a mode that reaches the external bus.
@@ -66,8 +72,7 @@ class TestRxBackpressure(PeerTestCase):
     """Uses port 0 only -- this is a targeted mechanism test, not a
     per-port survey; test_RS232_loopback_bulk.py covers all 4 ports."""
 
-    @unittest.expectedFailure
-    def test_data_loss_under_induced_backpressure(self) -> None:
+    def test_data_loss_is_flagged_under_induced_backpressure(self) -> None:
         port, peer = self.board.port(0), self.peers[0]
         port.set_line_coding(LineCoding(115200))
         peer.configure(115200)
@@ -78,22 +83,11 @@ class TestRxBackpressure(PeerTestCase):
         self.assertEqual(peer_saw, pattern,
                           "peer side sanity check failed -- that's not the "
                           "bug this test targets, something else is wrong")
-        self.assertEqual(received, pattern,
-                          f"got back {received!r} instead of the full pattern -- "
-                          f"data lost under induced backpressure")
-
-    def test_overrun_flagged_under_induced_backpressure(self) -> None:
-        port, peer = self.board.port(0), self.peers[0]
-        port.set_line_coding(LineCoding(115200))
-        peer.configure(115200)
-        pattern = bytes(i & 0xFF for i in range(64))
-
-        received, packets, peer_saw = _induce_backpressure_round_trip(port, peer, pattern)
-
-        # Induced backpressure is expected to cause data loss here (that's
-        # the separate, still-open issue above) -- what this test checks is
-        # that the loss shows up as ACM_CTRL_OVERRUN on at least one packet,
-        # instead of arriving silently.
+        # Data loss under induced backpressure is accepted, permanent
+        # behavior (see the module docstring) -- what this test confirms is
+        # that backpressure was actually induced (some data really was
+        # lost) and that the loss shows up as a line-error flag on at least
+        # one packet, instead of arriving silently.
         self.assertLess(len(received), len(pattern),
                          "expected data loss didn't happen -- backpressure "
                          "wasn't actually induced, so this isn't testing "
