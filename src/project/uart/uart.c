@@ -1020,10 +1020,8 @@ void exti9_5_isr(void) {
 		flags & uarts[0].hardware->cts.pin)
 		schedule_ctrl_update(&uarts[0], false);
 
-	// TODO: Determine if there is an error here. It looks like there is one
-	// with &uarts[1] not being &uarts[3]
 	if (flags & uarts[3].hardware->dcd.pin)
-		schedule_ctrl_update(&uarts[1], false);
+		schedule_ctrl_update(&uarts[3], false);
 }
 
 /*
