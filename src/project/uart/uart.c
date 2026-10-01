@@ -147,8 +147,18 @@ struct uart_t uarts[] = {
 };
 
 
+// 300 baud is not on this list: it's below the slowest baud representable
+// by the STM32 USART's 16-bit BRR divisor register on this board's clock
+// setup (72MHz APB2 for USART1, 36MHz APB1 for USART2/3/UART4 -- minimum
+// representable baud is clock/65535, i.e. ~1099 baud and ~549 baud
+// respectively). usart_set_baudrate() (libopencm3) computes BRR as a
+// plain clock/baud divide with no bounds checking, so requesting 300 baud
+// silently overflows that 16-bit register -- the hardware only latches
+// the low 16 bits, producing a real but completely wrong actual bit rate
+// (observed: ~1659 baud on USART1 when 300 was requested) instead of an
+// error. 1200 baud and up all fit within 16 bits on every port here.
 uint32_t baud_list[] = {
-	   300,  1200,  2400,  4800,  9600, 14400,
+	  1200,  2400,  4800,  9600, 14400,
 	 19200, 28800, 38400, 57600,115200,230400,
 };
 // NOTE: I an not certain these values are correct. (these are the values I got from my spredsheet)
@@ -157,7 +167,6 @@ uint32_t tim_table[][6] = {
 
 	// 30 bits (3 frames)     33 bits (3 frames)     36 bits (3 frames)
 	// TIMx_PSC, TIMx_CNT     TIMx_PSC, TIMx_CNT     TIMx_PSC, TIMx_CNT
-	{        36, 64865,             40, 64390,             43, 65455}, //    300	0.1         	0.11        	0.12
 	{         9, 60000,             10, 60000,             10, 65455}, //   1200	0.025       	0.0275      	0.03
 	{         4, 60000,              5, 55000,              5, 60000}, //   2400	0.0125      	0.01375     	0.015
 	{         2, 50000,              2, 55000,              2, 60000}, //   4800	0.00625     	0.006875    	0.0075
@@ -177,7 +186,6 @@ uint32_t tim_table[][6] = {
 
 /* Time to delay TX empty notification, rounded up to nearest millisecond */
 int tx_empty_delay[] = {
-	64, //    300
 	16, //   1200
 	8, //   2400
 	4, //   4800
@@ -193,7 +201,6 @@ int tx_empty_delay[] = {
 
 /* Time to buffer ctrl line changes rounded up to nearest millisecond */
 int ctrl_delay[] = {
-	512, //    300
 	256, //   1200
 	128, //   2400
 	64, //   4800
@@ -357,10 +364,12 @@ static void set_uart_parameters(struct uart_t *dev) {
 		// Loop from fastest baud to slowest baud
 		// look for baud value >= to the baud at index. index 0 (the
 		// slowest table entry) always matches on its turn regardless,
-		// flooring anything below it (e.g. a requested baud < 300) to
-		// the slowest supported baud instead of leaving the loop with
-		// index == -1, which left dev->baud_index == -1 and was used
-		// later to index ctrl_delay[]/tx_empty_delay[] out of bounds.
+		// flooring anything below it (e.g. a requested baud < 1200,
+		// including the no-longer-listed 300 -- see the comment on
+		// baud_list[] above) to the slowest supported baud instead of
+		// leaving the loop with index == -1, which left dev->baud_index
+		// == -1 and was used later to index ctrl_delay[]/tx_empty_delay[]
+		// out of bounds.
 		if (index > 0 && dev->baud < baud_list[index]) {
 			continue;
 		}
