@@ -37,6 +37,7 @@ Run directly:
 """
 import struct
 import sys
+import time
 import unittest
 from pathlib import Path
 
@@ -112,6 +113,11 @@ class TestLineCodingBoundary(PeerTestCase):
                 try:
                     port.set_line_coding_raw(_raw_line_coding(300, 0, 0, 8))
                     peer.configure(1200)
+                    # A genuine reconfigure is allowed one idle-frame
+                    # glitch byte on the wire -- give it time to arrive
+                    # before flushing it away (see module docstring).
+                    time.sleep(0.05)
+                    peer.flush_input()
                     received, packets, echoed = loopback_via_peer(port, peer, pattern)
                     self.assertEqual(echoed, pattern,
                                       "peer never saw the full pattern")
