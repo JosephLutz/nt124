@@ -5,11 +5,10 @@ is cleared directly without usbd_ep_read_packet(), leaving it un-drained in
 the USB peripheral's OUT FIFO -- and only read out later, from the TX-DMA-
 complete ISR, once a buffer frees up. Every other TX test in this suite
 sends payloads small/slow enough (or paced via a single blocking write)
-that this path is never exercised. Forcing it here: a low baud rate (1200)
-makes the wire drain slowly enough that 3 back-to-back 32-byte packets
-reliably outrun it. (Not 300 -- that baud has its own separate,
-pre-existing, unresolved data-integrity bug, unrelated to TX_FULL: 1200
-baud and up all round-trip correctly, only 300 baud doesn't.)
+that this path is never exercised. Forcing it here: a low baud rate (1200,
+the slowest one supported -- 300 was dropped, see the comment on
+baud_list[] in uart.c) makes the wire drain slowly enough that 3
+back-to-back 32-byte packets reliably outrun it.
 
 This checks correctness through that specific path (no corruption or
 reordering across the parked-packet handoff and the buffer-index

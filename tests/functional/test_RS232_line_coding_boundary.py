@@ -16,16 +16,18 @@ uart.c and test_RS232_line_coding_redundant.py) so a small throwaway
 transfer absorbs that before the real comparison.
 
 set_uart_parameters()'s baud-lookup loop used to be able to exit with its
-index left at -1 for any requested baud below the slowest table entry
-(300), which was then used to index ctrl_delay[]/tx_empty_delay[] out of
-bounds (fixed: baud below 300 now floors to the 300 entry, same as an
-in-between value floors to its next-lower neighbor). This is the
-regression test for that fix's control-plane-safety half -- request a few
-sub-300 bauds and confirm the device stays responsive throughout.
-Concretely confirming the *flooring* behavior with real data at 300 baud
-isn't done here: 300 baud has a separate, pre-existing data-integrity bug
-of its own, unrelated to this fix and not yet resolved -- 1200 baud and
-up all round-trip correctly, only 300 baud doesn't.
+index left at -1 for any requested baud below the slowest table entry,
+which was then used to index ctrl_delay[]/tx_empty_delay[] out of bounds
+(fixed: baud below the slowest entry now floors to it, same as an
+in-between value floors to its next-lower neighbor). 300 baud itself was
+also removed from the table entirely: it's below the minimum baud the
+STM32 USART's 16-bit BRR divisor register can represent on this board's
+clock setup, so requesting it used to silently produce a completely wrong
+actual bit rate (confirmed ~1659 baud on USART1 instead of 300) rather
+than an error. The slowest baud now offered is 1200, which this file
+confirms both ways: the device stays responsive to a range of sub-1200
+requests, and a sub-1200 request concretely floors to a working 1200
+baud, not silently to something else.
 
 Requires TX/RX wired between each port and its peer, and the transceiver
 set to a mode that reaches the external bus.
@@ -89,11 +91,11 @@ class TestLineCodingBoundary(PeerTestCase):
                     port.set_line_coding(LineCoding(115200))
                     peer.configure(115200)
 
-    def test_sub_300_baud_stays_responsive(self) -> None:
+    def test_sub_1200_baud_stays_responsive(self) -> None:
         for index, port in self.each_port():
             with self.subTest(port=index):
                 try:
-                    for baud in (0, 1, 100, 299):
+                    for baud in (0, 1, 100, 300, 1199):
                         port.set_line_coding_raw(_raw_line_coding(baud, 0, 0, 8))
                         # Control plane must stay responsive -- this is the
                         # regression check for the fixed out-of-bounds
@@ -102,6 +104,28 @@ class TestLineCodingBoundary(PeerTestCase):
                         self.assertIsInstance(port.tx_empty(), bool)
                 finally:
                     port.set_line_coding(LineCoding(115200))
+
+    def test_sub_1200_baud_floors_to_1200(self) -> None:
+        pattern = bytes(range(8))
+        for index, port, peer in self.each_port_and_peer():
+            with self.subTest(port=index):
+                try:
+                    port.set_line_coding_raw(_raw_line_coding(300, 0, 0, 8))
+                    peer.configure(1200)
+                    received, packets, echoed = loopback_via_peer(port, peer, pattern)
+                    self.assertEqual(echoed, pattern,
+                                      "peer never saw the full pattern")
+                    self.assertEqual(received, pattern,
+                                      f"got back {received!r} -- a sub-1200 "
+                                      f"baud request should floor to a "
+                                      f"working 1200 baud, not leave the "
+                                      f"port at some other effective rate")
+                    self.assertFalse(any(p.line_error for p in packets),
+                                      f"line error flagged: "
+                                      f"{[p.describe() for p in packets]}")
+                finally:
+                    port.set_line_coding(LineCoding(115200))
+                    peer.configure(115200)
 
 
 if __name__ == "__main__":
