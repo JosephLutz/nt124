@@ -1,8 +1,16 @@
-# Possible RXNE/RX-DMA byte-stealing race on a line error
+# RXNE/RX-DMA byte-stealing race on a line error
 
-**Severity:** Potentially high if real. **Confidence:** Uncertain --
-architecture-based reasoning only, not confirmed against the STM32F103
-reference manual's documented arbitration behavior or a hardware test.
+**Severity:** High. **Confidence:** Confirmed on hardware (2026-10-02):
+streaming 8192 bytes with deliberately mismatched parity (every byte a
+real USART parity error) reproducibly loses 85-93% of the data, breaking
+down right at the first RX DMA buffer boundary (`RX_BUFFER_SIZE`=29
+bytes) and continuing from a shifted offset into the original stream
+afterward -- exactly the symptom predicted below. 40 isolated single-
+buffer trials with a full settle between each showed 0 failures, so this
+specifically needs sustained, back-to-back buffer fills under errors to
+show up, not an isolated one. Regression test:
+`tests/functional/test_RS232_parity_error_injection.py::test_data_not_lost_under_sustained_parity_errors`
+(marked `@unittest.expectedFailure` until fixed).
 
 **File:** `src/project/uart/uart.c`
 
@@ -61,34 +69,29 @@ byte in that buffer would then land one position earlier than
 silently shifting the whole rest of the buffer out of alignment with what
 the host receives.
 
-**This one is flagged as uncertain deliberately.** Confirming it precisely
-needs either a close read of the STM32F103 reference manual's documented
-arbitration behavior between a CPU read and a pending DMA request on the
-same register (not yet done), or a hardware test with a logic analyzer and
-a way to deliberately inject a line error (parity or framing mismatch) in
-the middle of a multi-byte burst, then checking whether the byte at and
-after the error position comes out shifted.
+## Trigger sequence (confirmed)
 
-## Trigger sequence (if real)
+A sustained run of real USART line errors (parity, framing, or noise)
+landing close enough together, and close enough to DMA's own handling of
+those same bytes, for the race to resolve against DMA repeatedly across
+many buffer fills. A single isolated error is apparently not enough to
+reliably hit the race (40/40 isolated single-buffer trials passed); it
+needs the back-to-back, continuous conditions a real noisy line (or the
+deliberately mismatched-parity stream in the regression test) produces.
 
-A real USART line error (parity, framing, or noise) occurring in close
-enough proximity to DMA's own handling of that same byte for the race to
-actually resolve against DMA -- not something that can be forced
-deterministically without hardware-level fault injection.
+## Observable symptom (confirmed)
 
-## Observable symptom (if real)
-
-Silent data corruption specifically correlated with real line errors: the
-byte at the error position and everything after it in that DMA buffer
-would be shifted by one position, read by `process_rx()`/`send_rx()` as if
-it were one byte shorter or differently aligned than what was actually
-received.
+Silent, large-scale data loss correlated with sustained line errors: the
+first DMA buffer's worth of data arrives correctly, then the stream jumps
+forward to a later, shifted point in the original data -- consistent with
+DMA's internal buffer position repeatedly losing sync with the real byte
+stream across multiple buffer fills in a row.
 
 ## Next step
 
-Before treating this as confirmed: either trace the exact RXNE-clear/DMA-
-request arbitration behavior in the STM32F103 reference manual, or design
-a hardware test that deliberately injects a line error mid-burst (e.g. via
-a second UART driving the same RX line with a deliberately wrong baud/
-parity for one byte) and checks for a one-byte shift in everything after
-it.
+Root cause still needs the precise mechanism nailed down -- either a close
+read of the STM32F103 reference manual's documented arbitration behavior
+between a CPU read and a pending DMA request on the same register, or a
+logic-analyzer trace of `DMA_CNDTR`/`USART_DR` access timing during the
+regression test's mismatched-parity stream -- before a fix can be
+designed with confidence.

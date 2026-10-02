@@ -229,6 +229,26 @@ it's not mixed in with the rest of a normal, unattended run. Follow the
 prompts -- it'll ask you to unplug or reconnect one port's peer cable at a
 time.
 
+### Destructive tests (`NT124_DESTRUCTIVE=1`)
+
+A couple of known-bug regression tests (so far, the byte-stealing-race
+test in `test_RS232_parity_error_injection.py`) leave the board in a
+broken state afterward -- not just for that one test, but for everything
+that runs after it in the same session, since nothing reachable over USB
+can undo it. Those are skipped by default and only run with
+`NT124_DESTRUCTIVE=1` set:
+
+```sh
+cd tests
+.vEnv/bin/python3 transceiver.py rs232
+NT124_DESTRUCTIVE=1 .vEnv/bin/python3 -m unittest \
+    functional.test_RS232_parity_error_injection -v
+```
+
+Same as the interactive tests, run these directly rather than via
+`discover` so they don't silently poison a normal run. **Reboot or reflash
+the board afterward** before trusting the result of any other test.
+
 ## Adding a new test scenario
 
 Add new test files to `functional/`. If a test is chasing a known-broken or
