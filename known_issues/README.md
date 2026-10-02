@@ -15,7 +15,6 @@ empty folder (eventually just this README) means nothing's outstanding.
 
 ## Current issues
 
-- [TX not gated on USB configuration state](tx-not-gated-on-usb-configuration-state.md) -- high severity, high confidence
 - [`rx_state` race in `uart_RX()`'s error path](rx_state-race-in-uart_rx-error-path.md) -- medium-high severity, medium confidence
 - [Missing `volatile` on TX buffer-index fields](missing-volatile-on-tx-buffer-index-fields.md) -- medium severity, high confidence
 - [DIR pins glitch high at boot](dir-pins-glitch-high-at-boot.md) -- medium severity, confirmed, narrow real-world impact

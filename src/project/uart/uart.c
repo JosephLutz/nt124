@@ -584,7 +584,16 @@ inline static void usbuart_usb_out_cb(struct uart_t *uart, usbd_device *dev) {
 
 	nvic_disable_irq(uart->hardware->tx.dma_irqn);
 	UART_TRACE(uart, __LINE__);
-	if ((uart->tx_state == TX_WORKING || uart->tx_state == TX_FULL) && (uart->tx_num_to_send)) {
+	if (!nt124_get_config()) {
+		/* Not configured -- the USB peripheral already ACKed this OUT
+		 * packet at the hardware level before we got here, so the host
+		 * believes the write succeeded regardless of what we do now.
+		 * Drain it (so the endpoint doesn't appear stuck and CTR_RX
+		 * gets cleared) but discard it instead of forwarding it to the
+		 * physical UART -- mirrors the nt124_get_config() gate already
+		 * in send_rx() on the RX side. */
+		usbd_ep_read_packet(dev, uart->ep, uart->buffers[uart->tx_curr_buffer_index], CDCACM_PACKET_SIZE);
+	} else if ((uart->tx_state == TX_WORKING || uart->tx_state == TX_FULL) && (uart->tx_num_to_send)) {
 		// DMA is still working or the second buffer has some data
 		uart->tx_state = TX_FULL;
 		/* Clear the CTR_RX bit so we aren't notified again */
