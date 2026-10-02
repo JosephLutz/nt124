@@ -932,7 +932,10 @@ inline static void uart_RX(struct uart_t *dev) {
 		UART_TRACE(dev, __LINE__);
 		// read character to clear the error flag
 		usart_recv(dev->hardware->usart);
-		// store which error occured
+		// uart_RX_DMA()/uart_RX_timer() are higher priority and can
+		// preempt us here, racing this read-modify-write of rx_state.
+		nvic_disable_irq(dev->hardware->timer_irqn);
+		nvic_disable_irq(dev->hardware->rx.dma_irqn);
 		if (uart_sr & USART_SR_PE)
 			dev->rx_state |= RX_P_ERROR;
 		if (uart_sr & USART_SR_FE)
@@ -941,6 +944,8 @@ inline static void uart_RX(struct uart_t *dev) {
 			dev->rx_state |= RX_N_ERROR;
 		if (uart_sr & USART_SR_ORE)
 			dev->rx_state |= RX_OR_ERROR;
+		nvic_enable_irq(dev->hardware->timer_irqn);
+		nvic_enable_irq(dev->hardware->rx.dma_irqn);
 	} else {
 		nvic_disable_irq(dev->hardware->timer_irqn);
 		// clear the flags if not already cleared
