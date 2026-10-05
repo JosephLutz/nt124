@@ -17,18 +17,25 @@
  * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
 
+#include <stdbool.h>
 #include <stdlib.h>
 
 #include <libopencm3/cm3/nvic.h>
 #include <libopencm3/usb/usbd.h>
 #include <libopencm3/usb/cdc.h>
 #include <libopencm3/cm3/scb.h>
+#include <libopencm3/cm3/cortex.h>
 #include <libopencm3/stm32/rcc.h>
 
 #include "uart/uart.h"
 
 #include "platform/platform.h"
 #include "usb/usb.h"
+
+// Set by USB_ISR(), consumed by usb_task()'s thread-mode loop -- see
+// USB_ISR() for why this needs no extra locking beyond the IRQ
+// disable/enable bracket itself.
+volatile bool usb_poll_needed = false;
 
 #define BOARD_IDENT             "NovaTech USB to serial"
 
@@ -454,15 +461,37 @@ void usb_init(void) {
 			    usbd_control_buffer, sizeof(usbd_control_buffer));
 	usbd_register_set_config_callback(usbdev, nt124_set_config);
 	
-	// setup the ISR
+	// setup the ISR -- USB_ISR() only flags that usbd_poll() is due; the
+	// actual call happens from usb_task()'s thread-mode loop, the one
+	// place all USB work is meant to happen (see
+	// known_issues/cross-port-byte-loss-under-concurrent-perturbation.md).
 	nvic_set_priority(USB_IRQ, IRQ_PRI_USB);
-	nvic_disable_irq(USB_IRQ);
+	nvic_enable_irq(USB_IRQ);
 }
 
 
 void usb_task(void) {
 	while(1) {
-		usbd_poll(usbdev);
+		if (usb_poll_needed) {
+			usb_poll_needed = false;
+			// Global critical section around usbd_poll() itself now
+			// that it's only called when real USB activity triggered
+			// it (bounded by actual bus traffic, not a tight spin
+			// loop) -- see
+			// known_issues/cross-port-byte-loss-under-concurrent-perturbation.md.
+			// CM_ATOMIC_BLOCK() (not a plain cm_disable_interrupts()/
+			// cm_enable_interrupts() pair) because usbd_poll() can
+			// synchronously call back into code (e.g.
+			// schedule_ctrl_update()) that has its own nested critical
+			// section -- a plain pair doesn't nest safely.
+			CM_ATOMIC_BLOCK() {
+				usbd_poll(usbdev);
+			}
+			// Only now, after usbd_poll() has cleared whatever ISTR
+			// condition(s) triggered USB_ISR(), is it safe to let it
+			// fire again.
+			nvic_enable_irq(USB_IRQ);
+		}
 	}
 }
 
@@ -472,7 +501,10 @@ void usb_task(void) {
  */
 
 void USB_ISR(void) {
+	// Disabled here, not re-enabled until usb_task()'s thread-mode loop
+	// has actually called usbd_poll() -- this IRQ physically can't fire
+	// again in the meantime, which is what makes usb_poll_needed safe
+	// without any extra locking (single writer, gated by this).
 	nvic_disable_irq(USB_IRQ);
-	usbd_poll(usbdev);
-	nvic_enable_irq(USB_IRQ);
+	usb_poll_needed = true;
 }

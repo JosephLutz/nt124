@@ -146,7 +146,6 @@ struct uart_t uarts[] = {
 	},
 };
 
-
 // 300 baud is not on this list: it's below the slowest baud representable
 // by the STM32 USART's 16-bit BRR divisor register on this board's clock
 // setup (72MHz APB2 for USART1, 36MHz APB1 for USART2/3/UART4 -- minimum
@@ -222,10 +221,10 @@ void send_rx(struct uart_t *dev);
  */
 #ifdef UART_TRACE_ENABLED
 void do_uart_trace(struct uart_t *dev, int line) {
-	cm_disable_interrupts();
-	dev->trace_buf[dev->trace_count % UART_TRACE_BUF_SIZE] = (uint16_t)line;
-	dev->trace_count++;
-	cm_enable_interrupts();
+	CM_ATOMIC_BLOCK() {
+		dev->trace_buf[dev->trace_count % UART_TRACE_BUF_SIZE] = (uint16_t)line;
+		dev->trace_count++;
+	}
 }
 #endif
 
@@ -236,21 +235,19 @@ void do_uart_trace(struct uart_t *dev, int line) {
 static void schedule_ctrl_update(struct uart_t *dev, bool tx_empty) {
 	//FIXME
 	if (nt124_get_config()) {
-		cm_disable_interrupts();
+		CM_ATOMIC_BLOCK() {
+			/* Set appropriate down counter if it isn't already counting */
+			if (tx_empty && dev->tx_empty_count_down == -1)
+				dev->tx_empty_count_down = tx_empty_delay[dev->baud_index];
+			else if(!tx_empty && dev->ctrl_count_down == -1)
+				dev->ctrl_count_down = ctrl_delay[dev->baud_index];
 
-		/* Set appropriate down counter if it isn't already counting */
-		if (tx_empty && dev->tx_empty_count_down == -1)
-			dev->tx_empty_count_down = tx_empty_delay[dev->baud_index];
-		else if(!tx_empty && dev->ctrl_count_down == -1)
-			dev->ctrl_count_down = ctrl_delay[dev->baud_index];
-
-		if (!g_systick_in_use) {
-			systick_interrupt_enable();
-			systick_counter_enable();
-			g_systick_in_use = true;
+			if (!g_systick_in_use) {
+				systick_interrupt_enable();
+				systick_counter_enable();
+				g_systick_in_use = true;
+			}
 		}
-
-		cm_enable_interrupts();
 		UART_TRACE(dev, __LINE__);
 	}
 }
@@ -281,15 +278,13 @@ static void raw_ctrl_update_sent(struct uart_t *dev, bool tx_empty) {
 }
 
 static void ctrl_update_sent(struct uart_t *dev, bool tx_empty) {
-	cm_disable_interrupts();
+	CM_ATOMIC_BLOCK() {
+		if (g_systick_in_use) {
+			raw_ctrl_update_sent(dev, tx_empty);
 
-	if (g_systick_in_use) {
-		raw_ctrl_update_sent(dev, tx_empty);
-
-		disable_systick_if_unused();
+			disable_systick_if_unused();
+		}
 	}
-
-	cm_enable_interrupts();
 	UART_TRACE(dev, __LINE__);
 }
 
@@ -302,7 +297,16 @@ static bool send_ctrl_update(struct uart_t *dev, bool tx_empty) {
 		if (dev->tx_empty)
 			reply |= ACM_CTRL_TXEMPTY;
 
-		if (usbd_ep_write_packet(usbdev, dev->ep, &reply, 2) == 0) {
+		// Global critical section, not just this port's own IRQs: this
+		// call and send_rx()'s/uart_TX_DMA_empty()'s/usbuart_usb_out_cb()'s
+		// all touch the same shared USB stack state regardless of which
+		// port they're for -- see
+		// known_issues/cross-port-byte-loss-under-concurrent-perturbation.md.
+		bool write_failed;
+		CM_ATOMIC_BLOCK() {
+			write_failed = (usbd_ep_write_packet(usbdev, dev->ep, &reply, 2) == 0);
+		}
+		if (write_failed) {
 			/* IN endpoint still busy -- try again next tick. Unlike
 			 * RX data, there's no fixed-size buffer at risk here
 			 * (the reply is always recomputed live from current
@@ -315,14 +319,14 @@ static bool send_ctrl_update(struct uart_t *dev, bool tx_empty) {
 		UART_TRACE(dev, __LINE__);
 		return true;
 	}
-	
+
 	return false;
 }
 
 void sys_tick_handler(void) {
 	uint16_t i;
 	bool update_sent = false;
-	
+
 	for (i = 0; i < sizeof(uarts)/sizeof(uarts[0]); i++) {
 		if (uarts[i].tx_empty_count_down == 0) {
 			if (uarts[i].tx_state == TX_IDLE) {
@@ -592,7 +596,9 @@ inline static void usbuart_usb_out_cb(struct uart_t *uart, usbd_device *dev) {
 		 * gets cleared) but discard it instead of forwarding it to the
 		 * physical UART -- mirrors the nt124_get_config() gate already
 		 * in send_rx() on the RX side. */
-		usbd_ep_read_packet(dev, uart->ep, uart->buffers[uart->tx_curr_buffer_index], CDCACM_PACKET_SIZE);
+		CM_ATOMIC_BLOCK() {
+			usbd_ep_read_packet(dev, uart->ep, uart->buffers[uart->tx_curr_buffer_index], CDCACM_PACKET_SIZE);
+		}
 	} else if ((uart->tx_state == TX_WORKING || uart->tx_state == TX_FULL) && (uart->tx_num_to_send)) {
 		// DMA is still working or the second buffer has some data
 		uart->tx_state = TX_FULL;
@@ -601,7 +607,9 @@ inline static void usbuart_usb_out_cb(struct uart_t *uart, usbd_device *dev) {
 		UART_TRACE(uart, __LINE__);
 	} else {
 		UART_TRACE(uart, __LINE__);
-		len = usbd_ep_read_packet(dev, uart->ep, uart->buffers[uart->tx_curr_buffer_index], CDCACM_PACKET_SIZE);
+		CM_ATOMIC_BLOCK() {
+			len = usbd_ep_read_packet(dev, uart->ep, uart->buffers[uart->tx_curr_buffer_index], CDCACM_PACKET_SIZE);
+		}
 		if ((uart->tx_state != TX_WORKING) && (len)) {
 			gpio_set(uart->hardware->dir.port, uart->hardware->dir.pin);
 			uart->tx_empty = false;
@@ -773,7 +781,9 @@ inline static void uart_TX_DMA_empty(struct uart_t *dev) {
 
 			if (dev->tx_state == TX_FULL) {
 				dev->tx_state = TX_WORKING;
-				dev->tx_num_to_send = usbd_ep_read_packet(usbdev, dev->ep, dev->buffers[dev->tx_curr_buffer_index], CDCACM_PACKET_SIZE);
+				CM_ATOMIC_BLOCK() {
+					dev->tx_num_to_send = usbd_ep_read_packet(usbdev, dev->ep, dev->buffers[dev->tx_curr_buffer_index], CDCACM_PACKET_SIZE);
+				}
 				UART_TRACE(dev, __LINE__);
 			} else {
 				dev->tx_state = TX_WORKING;
@@ -867,7 +877,11 @@ void send_rx(struct uart_t *dev) {
 				}
 			}
 
-			if(usbd_ep_write_packet(usbdev, dev->ep, reply_buf, len+2) == 0) {
+			bool write_failed;
+			CM_ATOMIC_BLOCK() {
+				write_failed = (usbd_ep_write_packet(usbdev, dev->ep, reply_buf, len+2) == 0);
+			}
+			if (write_failed) {
 				serviced = false;
 			} else {
 				ctrl_update_sent(dev, false);
