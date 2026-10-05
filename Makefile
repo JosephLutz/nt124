@@ -15,10 +15,16 @@ BUILD_DIR = build
 OPT = -O3
 CSTD = -std=c11
 CFLAGS += -g
+CFLAGS += -Wall
 CFLAGS += -Wextra
 CFLAGS += -Werror
 CFLAGS += -Wstrict-prototypes
 CFLAGS += -Wmissing-prototypes
+# -Wall alone doesn't actually enable -Wunused-variable here: src/rules.mk
+# (vendored, not ours to edit) explicitly passes -Wno-unused-variable in
+# TGT_CFLAGS, and that explicit negation wins regardless of where -Wall
+# appears on the command line. Override it directly.
+CFLAGS += -Wunused-variable
 CFLAGS += -DVERSION_MAJOR=$(VERSION_MAJOR)
 CFLAGS += -DVERSION_MINOR=$(VERSION_MINOR)
 

@@ -326,7 +326,6 @@ static enum usbd_request_return_codes nt124_get_txempty_callback(usbd_device *de
 {
 	(void)dev_;
 	(void)complete;
-	register uint16_t pin_state;
 	struct uart_t *uart;
 
 	if (req->bRequest != NT124_USB_REQ_GET_TXEMPTY)
