@@ -16,4 +16,3 @@ empty folder (eventually just this README) means nothing's outstanding.
 ## Current issues
 
 - [Residual byte loss under concurrent perturbation](residual-byte-loss-under-concurrent-perturbation.md) -- medium severity, confirmed symptom, cause not yet identified
-- [Missing `-Wall` compiler warning flag](missing-wall-compiler-warning-flag.md) -- cosmetic, confirmed
