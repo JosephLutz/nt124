@@ -9,14 +9,25 @@ large transfer.
 This exercises two separate things:
 
 1. test_data_not_lost_under_sustained_parity_errors: data integrity under
-   a long, continuous run of errors. Confirmed broken on hardware --
-   a large transfer reproducibly loses most of its data, breaking down
-   right at the first RX DMA buffer boundary (every RX_BUFFER_SIZE
-   bytes), consistent with the known, tracked
-   rxne-dma-byte-stealing-race-on-error.md issue: a real USART error's
-   manual usart_recv() read can race DMA's own handling of that byte,
-   shifting DMA's buffer position out of alignment with the real stream.
-   Marked @unittest.expectedFailure until that's fixed.
+   a long, continuous run of errors, read back the same way this test
+   always has -- write the whole transfer, then read. That sequencing
+   means the host isn't draining the IN endpoint while most of the data
+   arrives, which -- combined with the already-accepted, by-design lack
+   of RTS back-pressure (only 2 rx_buffer slots; see
+   tests/functional/test_RS232_rx_backpressure.py and tests/README.md)
+   -- reliably loses most of the transfer on its own, independent of any
+   error handling. A real, separate bug did exist here too: uart_RX()'s
+   error branch never reset the idle-gap timer, so a sustained run of
+   errors left it disarmed and the stream's trailing partial buffer was
+   never flushed -- fixed in uart.c (the timer is now reset on every
+   received byte, error or not). That fix is confirmed correct under
+   realistic concurrent read/write usage (a background reader thread
+   draining packets while the peer writes gets 100% of the data back,
+   every time, across repeated fresh-boot trials) but doesn't change this
+   test's own sequential methodology, so it's still expected to fail here
+   for the backpressure reason above. Marked @unittest.expectedFailure
+   accordingly -- not because of unfixed firmware, but because this test
+   doesn't reflect how a real client would read.
 
 2. test_every_packet_flags_parity: regression coverage for a *different*,
    already-fixed bug -- an unguarded `dev->rx_state |= RX_P_ERROR` in
@@ -28,16 +39,15 @@ This exercises two separate things:
    DMA buffer-full boundary hundreds of times while errors fire on every
    byte, giving the race many chances to show up if it's still there.
    This check only looks at each packet's status flag, not its payload
-   content, so it isn't affected by issue #1's data loss/misalignment.
+   content, so it isn't affected by issue #1's data loss.
 
-DESTRUCTIVE: triggering the byte-stealing race appears to desync that
-port's RX DMA position permanently, not just for the duration of this
-stream -- nothing reachable over USB re-initializes the DMA channel's
-internal address/count pointers (that only happens once, at boot, in
-setup_uart_device()), so once a port is corrupted it stays corrupted for
-every test that runs after this one, until the board is rebooted/
-reflashed. Skipped unless NT124_DESTRUCTIVE=1 is set, so a normal
-`unittest discover` run doesn't silently break the rest of the suite.
+DESTRUCTIVE: this was originally believed to desync a port's RX DMA
+position permanently, requiring reboot/reflash before trusting any other
+test. That belief was based on a misdiagnosis (a suspected DMA/CPU race
+that turned out not to be the real bug -- see above), so it hasn't been
+re-verified since the actual fix landed. Keeping the NT124_DESTRUCTIVE
+gate and the reboot/reflash advice until that's confirmed one way or the
+other.
 
 Requires TX/RX wired between each port and its peer, and the transceiver
 set to a mode that reaches the external bus.
