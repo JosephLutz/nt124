@@ -17,5 +17,5 @@ empty folder (eventually just this README) means nothing's outstanding.
 
 - [Missing `volatile` on TX buffer-index fields](missing-volatile-on-tx-buffer-index-fields.md) -- medium severity, high confidence
 - [DIR pins glitch high at boot](dir-pins-glitch-high-at-boot.md) -- medium severity, confirmed, narrow real-world impact
-- [Cross-port byte loss under concurrent perturbation](cross-port-byte-loss-under-concurrent-perturbation.md) -- medium severity, suspected mechanism identified, not yet confirmed
+- [Residual byte loss under concurrent perturbation](residual-byte-loss-under-concurrent-perturbation.md) -- medium severity, confirmed symptom, cause not yet identified
 - [Missing `-Wall` compiler warning flag](missing-wall-compiler-warning-flag.md) -- cosmetic, confirmed
