@@ -1,13 +1,22 @@
 # Cross-port silent byte loss under concurrent multi-port activity
 
 **Severity:** Medium (silent, single-byte data loss, no error flag raised).
-**Confidence:** Suspected -- a concrete, plausible mechanism has been
-identified by code inspection, but not yet confirmed on hardware via
-instrumentation. Reproduced 4 times so far via the test below: twice
-within a full `unittest discover` run of the whole functional suite, and
-twice more running this test *in complete isolation*, repeated back to
-back on its own with nothing else run first -- confirming this is an
-intrinsic race in this test's own concurrent port 0/port 1 activity, not
+**Confidence:** Confirmed on hardware (2026-10-05). Instrumented both
+`usbd_ep_write_packet()` call sites (`send_rx()`, `send_ctrl_update()`)
+with a simple "who's currently inside this call" tracker; a single
+isolated repro run that also lost a byte showed the shared USB stack
+being reentered 3 separate times during that one run, every single time
+in the exact shape the mechanism below predicts: `send_rx()` for port 0
+(endpoint 1) was still inside `usbd_ep_write_packet()` when
+`send_ctrl_update()` (called from `sys_tick_handler()`) entered the same
+function for ports 3, 2, and 1's own endpoints (7, 5, 3) in turn. Raw
+log: `{outer_caller=send_rx, outer_port=1, inner_caller=send_ctrl_update,
+inner_port=7}`, `{..., inner_port=5}`, `{..., inner_port=3}`. Reproduced
+4 times total via the test below before instrumenting: twice within a
+full `unittest discover` run of the whole functional suite, and twice
+more running this test *in complete isolation*, repeated back to back on
+its own with nothing else run first -- confirming this is an intrinsic
+race in this test's own concurrent port 0/port 1 activity, not
 contamination from other tests. Roughly a 1-in-5-to-7 reproduction rate
 when run repeatedly on the same boot.
 
@@ -41,7 +50,7 @@ bytes), in different positions each time -- consistent with something
 timing-dependent near the *start* of the concurrent activity, not a fixed
 offset.
 
-## Suspected mechanism
+## Confirmed mechanism
 
 `sys_tick_handler()` (uart.c) runs at `IRQ_PRI_SYSTICK` -- priority 0, the
 *highest* in this firmware's whole scheme (see `platform.h`'s `IRQ_PRI_*`
@@ -74,11 +83,14 @@ with no coordination:
 - `uart_RX_DMA()`/`uart_RX_timer()`'s own `send_rx()` call, for a
   *different* port than the one SysTick is servicing.
 
-If the USB stack's internal state isn't safe against being reentered this
-way, a SysTick-driven ctrl-status write for one port, firing in the
-middle of an in-flight RX data write for another port, could plausibly
-corrupt or drop a byte/packet on whichever transfer got interrupted --
-silently, since the corruption would be below the level the UART-side
+This reentrancy is now directly confirmed (see above). The remaining,
+still-unconfirmed step is that the USB stack's internal state is what
+actually gets corrupted by it -- the timing (reentrancy logged in a run
+that also lost a byte) and the lack of any alternative explanation after
+ruling out cross-test contamination make it the leading candidate, but no
+instrumentation has yet caught the corruption itself mid-flight, only its
+precondition. If so, it would corrupt or drop a byte/packet on whichever
+transfer got interrupted silently, below the level the UART-side
 error-flagging (`RX_P_ERROR`/`RX_OR_ERROR`/etc.) ever sees.
 
 `schedule_ctrl_update()` (which arms SysTick) is called from
@@ -101,15 +113,19 @@ throughout the whole perturbation window, maximizing overlap with port
 
 ## Next steps
 
-- Confirm reentrancy is actually happening: instrument (a flag/counter
-  tracking nested entry into `usbd_ep_write_packet()` or the broader
-  usbd core) to directly observe whether `send_ctrl_update()` (from
-  SysTick) can interrupt an in-progress `send_rx()` call for a different
-  port.
-- If reentrancy is confirmed as the cause, the likely fix is to stop
-  calling `usbd_ep_write_packet()` directly from `sys_tick_handler()`:
-  have it only set a flag/pending state, and let the existing thread-mode
-  `usb_task()` poll loop (or the already-interrupt-driven `send_rx()`
-  paths, which already coordinate via NVIC disable/enable) perform the
-  actual write -- consistent with the project's existing "USB work only
-  happens from one place" design intent.
+- Implement the fix: stop calling `usbd_ep_write_packet()` directly from
+  `sys_tick_handler()` (priority 0, can preempt anything). Have it only
+  mark a port's ctrl-update as due; move the actual write to the
+  thread-mode `usb_task()` poll loop, consistent with the project's
+  existing "USB work only happens from one place" design intent (see
+  CLAUDE.md). This doesn't claim to close every theoretical reentrancy
+  path (`uart_RX_DMA()`/`uart_RX_timer()` still call `send_rx()` from real
+  ISR context, at priorities 2/3, and could in principle still interrupt
+  a thread-mode ctrl-update write) -- but it removes the specific,
+  confirmed, highest-frequency offender (SysTick fires far more often
+  than RX DMA/timer events), and is a meaningfully smaller change than a
+  full redesign.
+- After the fix, re-run the same instrumentation to confirm the
+  SysTick/send_rx reentrancy specifically is gone, then re-run
+  `test_port0_unaffected_by_port1_perturbation` repeatedly (its ~1-in-5
+  to 1-in-7 rate) to see if the byte loss itself stops.
