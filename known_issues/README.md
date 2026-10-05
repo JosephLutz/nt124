@@ -15,6 +15,5 @@ empty folder (eventually just this README) means nothing's outstanding.
 
 ## Current issues
 
-- [DIR pins glitch high at boot](dir-pins-glitch-high-at-boot.md) -- medium severity, confirmed, narrow real-world impact
 - [Residual byte loss under concurrent perturbation](residual-byte-loss-under-concurrent-perturbation.md) -- medium severity, confirmed symptom, cause not yet identified
 - [Missing `-Wall` compiler warning flag](missing-wall-compiler-warning-flag.md) -- cosmetic, confirmed
