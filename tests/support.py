@@ -130,6 +130,40 @@ def write_while_reading(port: Port, pattern: bytes, timeout: int = 2000,
             raise write_error[0]
 
 
+def read_while_peer_writes(port: Port, peer: Peer, pattern: bytes,
+                            timeout: int = 2000
+                            ) -> tuple[bytes, list[Packet]]:
+    """The peer writes `pattern` on a background thread while nt124 reads it
+    back on `port` in the foreground -- the mirror image of
+    `write_while_reading`, for the RX direction.
+
+    `peer.write()` blocks for roughly the whole real transmission time at
+    the configured baud. nt124's RX side has almost no buffering ahead of
+    the USB IN endpoint (only 2 rx_buffer slots, no RTS back-pressure), so
+    if nothing drains that endpoint while the peer is still blocked inside
+    that single write() call, most of a large transfer is silently
+    overwritten before the host ever starts reading -- not a device bug,
+    a test-sequencing one. Use `rx_one_way` instead for small (at most
+    RX_BUFFER_SIZE) transfers, where this doesn't matter.
+    """
+    write_error: list[Exception] = []
+
+    def writer() -> None:
+        try:
+            peer.write(pattern)
+        except Exception as e:  # surfaced below, not swallowed
+            write_error.append(e)
+
+    t = threading.Thread(target=writer, daemon=True)
+    t.start()
+    try:
+        return port.read_payload(len(pattern), timeout=timeout)
+    finally:
+        t.join(timeout=max(timeout / 1000.0, 1.0) * 2)
+        if write_error:
+            raise write_error[0]
+
+
 def loopback_via_peer(port: Port, peer: Peer, pattern: bytes,
                        timeout: int = 2000
                        ) -> tuple[bytes, list[Packet], bytes]:

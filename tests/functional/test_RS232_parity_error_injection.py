@@ -9,25 +9,23 @@ large transfer.
 This exercises two separate things:
 
 1. test_data_not_lost_under_sustained_parity_errors: data integrity under
-   a long, continuous run of errors, read back the same way this test
-   always has -- write the whole transfer, then read. That sequencing
-   means the host isn't draining the IN endpoint while most of the data
-   arrives, which -- combined with the already-accepted, by-design lack
-   of RTS back-pressure (only 2 rx_buffer slots; see
-   tests/functional/test_RS232_rx_backpressure.py and tests/README.md)
-   -- reliably loses most of the transfer on its own, independent of any
-   error handling. A real, separate bug did exist here too: uart_RX()'s
-   error branch never reset the idle-gap timer, so a sustained run of
-   errors left it disarmed and the stream's trailing partial buffer was
-   never flushed -- fixed in uart.c (the timer is now reset on every
-   received byte, error or not). That fix is confirmed correct under
-   realistic concurrent read/write usage (a background reader thread
-   draining packets while the peer writes gets 100% of the data back,
-   every time, across repeated fresh-boot trials) but doesn't change this
-   test's own sequential methodology, so it's still expected to fail here
-   for the backpressure reason above. Marked @unittest.expectedFailure
-   accordingly -- not because of unfixed firmware, but because this test
-   doesn't reflect how a real client would read.
+   a long, continuous run of errors. Originally written with a sequential
+   write-then-read (write the whole transfer, then read), which reliably
+   lost most of the transfer -- but for two unrelated reasons, not one:
+   a real bug (uart_RX()'s error branch never reset the idle-gap timer,
+   so a sustained run of errors left it disarmed and the stream's
+   trailing partial buffer was never flushed -- fixed in uart.c, which
+   now resets it on every received byte, error or not) tangled up with a
+   test-sequencing artifact (the sequential read/write meant the host
+   wasn't draining the IN endpoint while most of the data arrived, which
+   -- combined with the already-accepted, by-design lack of RTS
+   back-pressure, only 2 rx_buffer slots; see
+   tests/functional/test_RS232_rx_backpressure.py and tests/README.md --
+   loses most of a transfer on its own, independent of any error
+   handling). Now uses `read_while_peer_writes` (support.py) so the host
+   drains packets concurrently with the peer's write, like any real
+   client would -- confirmed passing against the fixed firmware across
+   repeated fresh-boot trials.
 
 2. test_every_packet_flags_parity: regression coverage for a *different*,
    already-fixed bug -- an unguarded `dev->rx_state |= RX_P_ERROR` in
@@ -58,13 +56,14 @@ other test):
 """
 import os
 import sys
+import time
 import unittest
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from nt124usb import LineCoding, ST_PARITY  # noqa: E402
-from support import PeerTestCase  # noqa: E402
+from support import PeerTestCase, read_while_peer_writes  # noqa: E402
 
 _DESTRUCTIVE = os.environ.get("NT124_DESTRUCTIVE") == "1"
 _PATTERN = bytes(i & 0xFF for i in range(8192))
@@ -74,18 +73,22 @@ def _stream_with_mismatched_parity(port, peer):
     port.set_line_coding(LineCoding(115200, databits=8, parity="e"))
     peer.configure(115200, databits=8, parity="o")
     try:
-        peer.write(_PATTERN)
-        return port.read_payload(len(_PATTERN), timeout=5000)
+        return read_while_peer_writes(port, peer, _PATTERN, timeout=5000)
     finally:
         port.set_line_coding(LineCoding(115200))
         peer.configure(115200)
+        # A genuine reconfigure is allowed one idle-frame glitch byte on
+        # the wire (see test_RS232_line_coding_matrix.py et al.) -- give it
+        # time to arrive, then flush it, so it doesn't leak into whichever
+        # test happens to run next and use this same peer.
+        time.sleep(0.05)
+        peer.flush_input()
 
 
 @unittest.skipUnless(_DESTRUCTIVE, "set NT124_DESTRUCTIVE=1 to run this -- it "
                                     "leaves ports 1-3 corrupted until reboot/reflash")
 class TestParityErrorInjection(PeerTestCase):
 
-    @unittest.expectedFailure
     def test_data_not_lost_under_sustained_parity_errors(self) -> None:
         for index, port, peer in self.each_port_and_peer():
             with self.subTest(port=index):
