@@ -58,9 +58,9 @@ struct uart_t {
 	uint8_t rx_buffer[NUM_RX_BUFFERS][RX_BUFFER_SIZE];
 	/* TX variables */
 	volatile tx_state_type_e tx_state;
-	int tx_num_to_send;
-	uint8_t tx_curr_buffer_index;	// buffers index to place new characters into.
-	uint8_t tx_dma_buffer_index;	// buffers index currently being used by DMA.
+	volatile int tx_num_to_send;
+	volatile uint8_t tx_curr_buffer_index;	// buffers index to place new characters into.
+	volatile uint8_t tx_dma_buffer_index;	// buffers index currently being used by DMA.
 	uint8_t buffers[NUM_TX_BUFFERS][TX_BUFFER_SIZE];
 	/* Hardware register values for UART */
 	struct platform_uart_t *hardware;
