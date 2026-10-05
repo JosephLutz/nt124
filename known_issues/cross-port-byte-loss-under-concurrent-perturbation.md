@@ -3,9 +3,13 @@
 **Severity:** Medium (silent, single-byte data loss, no error flag raised).
 **Confidence:** Suspected -- a concrete, plausible mechanism has been
 identified by code inspection, but not yet confirmed on hardware via
-instrumentation. Reproduced twice so far via the test below, both within
-a full `unittest discover` run of the whole functional suite (not yet
-tried as a standalone, isolated repro).
+instrumentation. Reproduced 4 times so far via the test below: twice
+within a full `unittest discover` run of the whole functional suite, and
+twice more running this test *in complete isolation*, repeated back to
+back on its own with nothing else run first -- confirming this is an
+intrinsic race in this test's own concurrent port 0/port 1 activity, not
+contamination from other tests. Roughly a 1-in-5-to-7 reproduction rate
+when run repeatedly on the same boot.
 
 **File:** `src/project/uart/uart.c`
 
@@ -16,16 +20,23 @@ tried as a standalone, isolated repro).
 
 Running a steady 8192-byte loopback transfer on port 0 while concurrently
 perturbing port 1 (line-coding churn + an induced RX overrun + a TX burst,
-see `_perturb_port()` in the test) has twice resulted in port 0's transfer
-coming back exactly one byte short, with no line-error flag on any
-packet:
+see `_perturb_port()` in the test) intermittently results in port 0's
+transfer coming back exactly one byte short, with no line-error flag on
+any packet:
 
-- Run 1: byte value `0x01` missing (everything after it shifted back one
-  position, otherwise correct).
-- Run 2 (different full-suite run): byte value `0x0f` missing, same
-  shifted-by-one pattern.
+- Run 1 (full suite): byte value `0x01` missing.
+- Run 2 (different full-suite run): byte value `0x0f` missing.
+- Run 3 (isolated, this test alone, attempt 7 of a repeated series):
+  byte value `0x12` missing.
 
-Both losses happened early in the transfer (within roughly the first 16
+All three: everything after the missing byte shifted back one position,
+otherwise correct, no error flag anywhere. A failing run also reliably
+takes ~6 seconds longer than a passing one (~8.8s vs ~2.9s) -- expected,
+not a separate symptom: `read_payload()`'s loop keeps retrying
+`read_packet()` until it hits the full 8000ms timeout, since the missing
+byte never arrives.
+
+All losses happened early in the transfer (within roughly the first 16-18
 bytes), in different positions each time -- consistent with something
 timing-dependent near the *start* of the concurrent activity, not a fixed
 offset.
@@ -95,10 +106,6 @@ throughout the whole perturbation window, maximizing overlap with port
   usbd core) to directly observe whether `send_ctrl_update()` (from
   SysTick) can interrupt an in-progress `send_rx()` call for a different
   port.
-- Try reproducing `test_port0_unaffected_by_port1_perturbation` in
-  isolation (fresh boot, just this one test, nothing else run first) a
-  few times, to rule out any involvement from residual state left by
-  earlier tests in a full-suite run.
 - If reentrancy is confirmed as the cause, the likely fix is to stop
   calling `usbd_ep_write_packet()` directly from `sys_tick_handler()`:
   have it only set a flag/pending state, and let the existing thread-mode
