@@ -12,11 +12,7 @@
 
 /* Unused pins */
 #define UNUSED_PORTA_PIN1 GPIO6
-#define UNUSED_PORTA_PIN2 GPIO7
 #define UNUSED_PORTB_PIN1 GPIO7
-#define UNUSED_PORTC_PIN1 GPIO0
-#define UNUSED_PORTC_PIN2 GPIO1
-#define UNUSED_PORTC_PIN3 GPIO4
 #define UNUSED_PORTC_PIN4 GPIO13
 #define UNUSED_PORTC_PIN5 GPIO15
 
@@ -83,11 +79,16 @@ void platform_init(void) {
 	systick_counter_disable();
 	
 	{	// DEBUG: LEDs
-		gpio_set_mode(GPIOA, GPIO_MODE_OUTPUT_10_MHZ, GPIO_CNF_OUTPUT_PUSHPULL, UNUSED_PORTA_PIN1 | UNUSED_PORTA_PIN2);
-		gpio_set(GPIOA, UNUSED_PORTA_PIN1 | UNUSED_PORTA_PIN2);
+		// PA7/PC0/PC1/PC4 (the old UNUSED_PORTA_PIN2/UNUSED_PORTC_PIN1-3)
+		// are actually UART1/UART3/UART2/UART4's RS-485 DIR pins (see
+		// platform_uart.c) -- driving them high here glitches all 4
+		// ports' transceiver drivers onto the bus simultaneously, until
+		// uart_init() reclaims and deasserts them moments later. Left
+		// out of this block entirely; they stay in the input-pulldown
+		// state set above until uart_init() configures them properly.
+		gpio_set_mode(GPIOA, GPIO_MODE_OUTPUT_10_MHZ, GPIO_CNF_OUTPUT_PUSHPULL, UNUSED_PORTA_PIN1);
+		gpio_set(GPIOA, UNUSED_PORTA_PIN1);
 		gpio_set_mode(GPIOB, GPIO_MODE_OUTPUT_10_MHZ, GPIO_CNF_OUTPUT_PUSHPULL, UNUSED_PORTB_PIN1);
 		gpio_set(GPIOB, UNUSED_PORTB_PIN1);
-		gpio_set_mode(GPIOC, GPIO_MODE_OUTPUT_10_MHZ, GPIO_CNF_OUTPUT_PUSHPULL, UNUSED_PORTC_PIN1 | UNUSED_PORTC_PIN2 | UNUSED_PORTC_PIN3);
-		gpio_set(GPIOC, UNUSED_PORTC_PIN1 | UNUSED_PORTC_PIN2 | UNUSED_PORTC_PIN3);
 	}
 }
