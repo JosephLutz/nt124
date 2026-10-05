@@ -944,6 +944,15 @@ inline static void uart_RX(struct uart_t *dev) {
 			dev->rx_state |= RX_N_ERROR;
 		if (uart_sr & USART_SR_ORE)
 			dev->rx_state |= RX_OR_ERROR;
+		// A byte arriving at all means the line isn't idle, whether or
+		// not it had an error -- (re)start the idle-gap timer here too,
+		// or a sustained run of errors leaves it disarmed and a
+		// trailing partial buffer never gets flushed to the host.
+		timer_clear_flag(dev->hardware->timer, TIM_SR_UIF);
+		timer_disable_counter(dev->hardware->timer);
+		timer_set_counter(dev->hardware->timer, 0);
+		timer_enable_counter(dev->hardware->timer);
+		timer_enable_irq(dev->hardware->timer, TIM_DIER_UIE);
 		nvic_enable_irq(dev->hardware->timer_irqn);
 		nvic_enable_irq(dev->hardware->rx.dma_irqn);
 	} else {
