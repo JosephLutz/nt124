@@ -971,9 +971,12 @@ inline static void uart_RX(struct uart_t *dev) {
 		nvic_enable_irq(dev->hardware->rx.dma_irqn);
 	} else {
 		nvic_disable_irq(dev->hardware->timer_irqn);
-		// clear the flags if not already cleared
 		timer_clear_flag(dev->hardware->timer, TIM_SR_UIF);
-		USART_SR(dev->hardware->usart) &= ~USART_SR_RXNE;
+		// Do not manually clear RXNE here -- this is the lowest-priority
+		// UART interrupt and can be delayed by any other, so a byte that
+		// arrived after the one that triggered us may already be
+		// pending; clearing RXNE then hides it from DMA with no trace.
+		// DMA's own read of USART_DR clears it normally once consumed.
 		// (re)start timer
 		timer_disable_counter(dev->hardware->timer);
 		timer_set_counter(dev->hardware->timer, 0);
