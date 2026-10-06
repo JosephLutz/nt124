@@ -10,9 +10,18 @@ any of that shared bookkeeping could show up as cross-port interference
 that per-port-sequential tests (which never run two ports' state changes
 at the same instant) would never catch.
 
-This runs a large, steady loopback transfer on port 0 while concurrently
-hammering port 1 with line-coding changes and an induced RX overrun, then
-checks port 0's transfer came through byte-for-byte with no line errors.
+test_port0_unaffected_by_port1_perturbation runs a large, steady loopback
+transfer on port 0 while concurrently hammering port 1 with line-coding
+changes and an induced RX overrun, then checks port 0's transfer came
+through byte-for-byte with no line errors. The other two methods are
+narrower variants built while chasing an intermittent single-byte loss
+this test used to catch here: one strips out the line-coding churn (to
+check whether SET_LINE_CODING specifically mattered), the other drops
+port 1 entirely (to check whether any second port was needed at all).
+That investigation found the real cause wasn't cross-port interference --
+it was a single-port race in uart_RX()'s good-byte branch (see the
+"Do not manually clear RXNE here" comment in src/project/uart/uart.c),
+fixed there. All three variants are kept as regression coverage.
 
 Requires TX/RX wired between ports 0 and 1 and their peers, and the
 transceiver set to a mode that reaches the external bus.
@@ -39,6 +48,23 @@ def _perturb_port(port, peer) -> None:
     for baud in (9600, 230400, 115200):
         port.set_line_coding(LineCoding(baud))
         time.sleep(0.05)
+
+    peer.flush_input()
+    pattern = bytes(range(64))
+    port.write(pattern, timeout=2000)
+    time.sleep(0.5)  # don't drain -- forces a failed send_rx() delivery
+    peer.read_available()
+    peer.write(peer.read_available())
+    port.read_payload(len(pattern), timeout=2000)
+
+
+def _perturb_port_no_reconfigure(port, peer) -> None:
+    """Same shape and timing as _perturb_port(), but with the 3 set_line_
+    coding() calls replaced by an equal-duration sleep -- isolated whether
+    SET_LINE_CODING/reconfigure specifically mattered to a byte loss this
+    test used to intermittently catch on port 0 (it didn't; see
+    test_port0_unaffected_by_port1_bulk_only_perturbation)."""
+    time.sleep(0.05 * 3)
 
     peer.flush_input()
     pattern = bytes(range(64))
@@ -80,6 +106,60 @@ class TestPortIsolation(PeerTestCase):
         # Leave port 1 back on the suite's standard setting.
         port1.set_line_coding(LineCoding(115200))
         peer1.configure(115200)
+
+    def test_port0_unaffected_by_port1_bulk_only_perturbation(self) -> None:
+        """Isolating variant of test_port0_unaffected_by_port1_perturbation:
+        same bulk traffic and induced overrun on port 1, but no SET_LINE_
+        CODING control transfers at all."""
+        port0, peer0 = self.board.port(0), self.peers[0]
+        port1, peer1 = self.board.port(1), self.peers[1]
+
+        port0.set_line_coding(LineCoding(115200))
+        peer0.configure(115200)
+        port1.set_line_coding(LineCoding(115200))
+        peer1.configure(115200)
+
+        pattern = bytes(i & 0xFF for i in range(8192))
+
+        with ThreadPoolExecutor(max_workers=2) as ex:
+            watched = ex.submit(loopback_via_peer, port0, peer0, pattern, 8000)
+            noisy = ex.submit(_perturb_port_no_reconfigure, port1, peer1)
+            received, packets, echoed = watched.result()
+            noisy.result()
+
+        self.assertEqual(echoed, pattern,
+                          "port 0: peer never saw the full pattern")
+        self.assertEqual(received, pattern,
+                          f"port 0: got back {len(received)}/{len(pattern)} "
+                          f"bytes while port 1 was being perturbed "
+                          f"(bulk-only, no SET_LINE_CODING)")
+        self.assertFalse(any(p.line_error for p in packets),
+                          f"port 0: unexpected line error while port 1 was "
+                          f"being perturbed (bulk-only, no SET_LINE_CODING): "
+                          f"{[p.describe() for p in packets]}")
+
+    def test_port0_in_complete_isolation(self) -> None:
+        """Isolating variant with no second port touched at all -- not even
+        opened, configured, or written to. This is the one that confirmed
+        the byte loss needed no second port active in any way."""
+        port0, peer0 = self.board.port(0), self.peers[0]
+
+        port0.set_line_coding(LineCoding(115200))
+        peer0.configure(115200)
+
+        pattern = bytes(i & 0xFF for i in range(8192))
+
+        received, packets, echoed = loopback_via_peer(port0, peer0, pattern, 8000)
+
+        self.assertEqual(echoed, pattern,
+                          "port 0: peer never saw the full pattern")
+        self.assertEqual(received, pattern,
+                          f"port 0: got back {len(received)}/{len(pattern)} "
+                          f"bytes with no other port touched at all")
+        self.assertFalse(any(p.line_error for p in packets),
+                          f"port 0: unexpected line error with no other "
+                          f"port touched at all: "
+                          f"{[p.describe() for p in packets]}")
 
 
 if __name__ == "__main__":
