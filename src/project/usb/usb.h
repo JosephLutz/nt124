@@ -30,8 +30,6 @@
 #define NT124_USB_REQ_SET_FLOW_CONTROL	0x90
 #define NT124_USB_REQ_GET_TXEMPTY	0x91
 
-extern volatile uint32_t *unique_id_p;
-
 void usb_init(void);
 int nt124_get_config(void);
 int nt124_get_dtr(void);

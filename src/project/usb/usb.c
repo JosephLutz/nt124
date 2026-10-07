@@ -53,8 +53,6 @@ extern struct uart_t uarts[];
 
 usbd_device * usbdev;
 
-static char *get_dev_unique_id(char *serial_no);
-
 static int configured;
 
 static const struct usb_device_descriptor dev = {
@@ -223,8 +221,6 @@ static const struct usb_config_descriptor config = {
 
 	.interface = ifaces,
 };
-
-char serial_no[9];
 
 static const char *usb_strings[] = {
 	"NovaTech LLC",
@@ -428,25 +424,6 @@ static void nt124_set_config(usbd_device *dev_, uint16_t wValue)
 /* We need a special large control buffer for this device: */
 uint8_t usbd_control_buffer[256];
 
-static char *get_dev_unique_id(char *s)
-{
-	uint32_t unique_id = *unique_id_p +
-			*(unique_id_p + 1) +
-			*(unique_id_p + 2);
-        int i;
-
-        /* Fetch serial number from chip's unique ID */
-        for(i = 0; i < 8; i++) {
-                s[7-i] = ((unique_id >> (4*i)) & 0xF) + '0';
-        }
-        for(i = 0; i < 8; i++)
-                if(s[i] > '9')
-                        s[i] += 'A' - '9' - 1;
-	s[8] = 0;
-
-	return s;
-}
-
 void usb_init(void) {
 	// reset that the USB is not configured
 	configured = 0;
@@ -454,7 +431,6 @@ void usb_init(void) {
 	usb_platform_init();
 
 	// Initilize the USB stack
-	get_dev_unique_id(serial_no);
 	usbdev = usbd_init(&USB_DRIVER, &dev, &config, usb_strings,
 			    sizeof(usb_strings)/sizeof(char *),
 			    usbd_control_buffer, sizeof(usbd_control_buffer));

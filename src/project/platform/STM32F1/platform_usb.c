@@ -17,8 +17,6 @@
 #define USB_ENUMERATE_PORT GPIOA
 #define USB_ENUMERATE_PIN  GPIO8
 
-volatile uint32_t *unique_id_p = (volatile uint32_t *)0x1FFFF7E8;
-
 /*
 void assert_boot_pin(void) {
 	// Set the DFU pin
