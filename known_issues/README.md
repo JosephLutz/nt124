@@ -20,7 +20,6 @@ empty folder (eventually just this README) means nothing's outstanding.
 - [`tx_empty` field not volatile](tx_empty-field-not-volatile.md) -- very low severity, confirmed inconsistency, no live race identified yet
 - [bDataBits switch silently substitutes unsupported values](databits-switch-silently-substitutes-unsupported-values.md) -- low-medium severity, confirmed inconsistency with the adjacent parity switch's handling
 - [rx_buffer/buffers not volatile](rx-buffers-not-volatile.md) -- very low severity, confirmed inconsistency, no concrete failure scenario found
-- [Unused chip-unique-ID serial number](unused-unique-id-serial-number.md) -- trivial, dead code
 - [Unused "Port N" USB strings](unused-port-name-usb-strings.md) -- trivial, dead data / unwired feature
 - [Unused TIM1 reset](unused-tim1-reset.md) -- trivial, harmless cleanup
 - [Unexplained CRC clock toggle](unexplained-crc-clock-toggle.md) -- very low severity, unconfirmed, looks purposeless
