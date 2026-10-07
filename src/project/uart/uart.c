@@ -942,13 +942,14 @@ void UART4_RX_DMA_ISR(void) { uart_RX_DMA(&uarts[3]); }
 inline static void uart_RX(struct uart_t *dev) {
 	uint32_t uart_sr = USART_SR(dev->hardware->usart);
 	UART_TRACE(dev, __LINE__);
+	// Guards the timer restart below, shared by both branches.
+	nvic_disable_irq(dev->hardware->timer_irqn);
 	if (uart_sr & (USART_SR_PE | USART_SR_FE | USART_SR_NE | USART_SR_ORE)) {
 		UART_TRACE(dev, __LINE__);
-		// read character to clear the error flag
+		// read character to clear the error flag (see commit message --
+		// DMA's own read of USART_DR doesn't reliably clear it here).
 		usart_recv(dev->hardware->usart);
-		// uart_RX_DMA()/uart_RX_timer() are higher priority and can
-		// preempt us here, racing this read-modify-write of rx_state.
-		nvic_disable_irq(dev->hardware->timer_irqn);
+		// Guards the rx_state writes below from uart_RX_DMA()/uart_RX_timer().
 		nvic_disable_irq(dev->hardware->rx.dma_irqn);
 		if (uart_sr & USART_SR_PE)
 			dev->rx_state |= RX_P_ERROR;
@@ -958,33 +959,16 @@ inline static void uart_RX(struct uart_t *dev) {
 			dev->rx_state |= RX_N_ERROR;
 		if (uart_sr & USART_SR_ORE)
 			dev->rx_state |= RX_OR_ERROR;
-		// A byte arriving at all means the line isn't idle, whether or
-		// not it had an error -- (re)start the idle-gap timer here too,
-		// or a sustained run of errors leaves it disarmed and a
-		// trailing partial buffer never gets flushed to the host.
-		timer_clear_flag(dev->hardware->timer, TIM_SR_UIF);
-		timer_disable_counter(dev->hardware->timer);
-		timer_set_counter(dev->hardware->timer, 0);
-		timer_enable_counter(dev->hardware->timer);
-		timer_enable_irq(dev->hardware->timer, TIM_DIER_UIE);
-		nvic_enable_irq(dev->hardware->timer_irqn);
 		nvic_enable_irq(dev->hardware->rx.dma_irqn);
-	} else {
-		nvic_disable_irq(dev->hardware->timer_irqn);
-		timer_clear_flag(dev->hardware->timer, TIM_SR_UIF);
-		// Do not manually clear RXNE here -- this is the lowest-priority
-		// UART interrupt and can be delayed by any other, so a byte that
-		// arrived after the one that triggered us may already be
-		// pending; clearing RXNE then hides it from DMA with no trace.
-		// DMA's own read of USART_DR clears it normally once consumed.
-		// (re)start timer
-		timer_disable_counter(dev->hardware->timer);
-		timer_set_counter(dev->hardware->timer, 0);
-		timer_enable_counter(dev->hardware->timer);
-		timer_enable_irq(dev->hardware->timer, TIM_DIER_UIE);
-		// IRQ# for timer is always enabled
-		nvic_enable_irq(dev->hardware->timer_irqn);
 	}
+	// (Re)start the idle-gap timer on every byte, error or not.
+	// DMA clears RXNE itself; don't also clear it here.
+	timer_clear_flag(dev->hardware->timer, TIM_SR_UIF);
+	timer_disable_counter(dev->hardware->timer);
+	timer_set_counter(dev->hardware->timer, 0);
+	timer_enable_counter(dev->hardware->timer);
+	timer_enable_irq(dev->hardware->timer, TIM_DIER_UIE);
+	nvic_enable_irq(dev->hardware->timer_irqn);
 	UART_TRACE(dev, __LINE__);
 }
 void UART1_RX_ISR(void) { uart_RX(&uarts[0]); }
