@@ -462,8 +462,7 @@ void usb_init(void) {
 	
 	// setup the ISR -- USB_ISR() only flags that usbd_poll() is due; the
 	// actual call happens from usb_task()'s thread-mode loop, the one
-	// place all USB work is meant to happen (see
-	// known_issues/cross-port-byte-loss-under-concurrent-perturbation.md).
+	// place all USB work is meant to happen.
 	nvic_set_priority(USB_IRQ, IRQ_PRI_USB);
 	nvic_enable_irq(USB_IRQ);
 }
@@ -476,9 +475,7 @@ void usb_task(void) {
 			// Global critical section around usbd_poll() itself now
 			// that it's only called when real USB activity triggered
 			// it (bounded by actual bus traffic, not a tight spin
-			// loop) -- see
-			// known_issues/cross-port-byte-loss-under-concurrent-perturbation.md.
-			// CM_ATOMIC_BLOCK() (not a plain cm_disable_interrupts()/
+			// loop). CM_ATOMIC_BLOCK() (not a plain cm_disable_interrupts()/
 			// cm_enable_interrupts() pair) because usbd_poll() can
 			// synchronously call back into code (e.g.
 			// schedule_ctrl_update()) that has its own nested critical

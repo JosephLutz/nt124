@@ -300,8 +300,7 @@ static bool send_ctrl_update(struct uart_t *dev, bool tx_empty) {
 		// Global critical section, not just this port's own IRQs: this
 		// call and send_rx()'s/uart_TX_DMA_empty()'s/usbuart_usb_out_cb()'s
 		// all touch the same shared USB stack state regardless of which
-		// port they're for -- see
-		// known_issues/cross-port-byte-loss-under-concurrent-perturbation.md.
+		// port they're for.
 		bool write_failed;
 		CM_ATOMIC_BLOCK() {
 			write_failed = (usbd_ep_write_packet(usbdev, dev->ep, &reply, 2) == 0);
