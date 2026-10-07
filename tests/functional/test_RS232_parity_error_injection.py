@@ -39,22 +39,20 @@ This exercises two separate things:
    This check only looks at each packet's status flag, not its payload
    content, so it isn't affected by issue #1's data loss.
 
-DESTRUCTIVE: this was originally believed to desync a port's RX DMA
-position permanently, requiring reboot/reflash before trusting any other
-test. That belief was based on a misdiagnosis (a suspected DMA/CPU race
-that turned out not to be the real bug -- see above), so it hasn't been
-re-verified since the actual fix landed. Keeping the NT124_DESTRUCTIVE
-gate and the reboot/reflash advice until that's confirmed one way or the
-other.
+This was originally believed to desync a port's RX DMA position
+permanently, requiring reboot/reflash before trusting any other test,
+and gated behind NT124_DESTRUCTIVE for that reason. That belief was
+based on a misdiagnosis (a suspected DMA/CPU race that turned out not to
+be the real bug -- see above); confirmed not destructive against the
+fixed firmware (a normal test run immediately afterward, no reboot,
+passes cleanly), so the gate's been removed.
 
 Requires TX/RX wired between each port and its peer, and the transceiver
 set to a mode that reaches the external bus.
 
-Run directly (reboot/reflash the board afterward before trusting any
-other test):
-    NT124_DESTRUCTIVE=1 python test_RS232_parity_error_injection.py
+Run directly:
+    python test_RS232_parity_error_injection.py
 """
-import os
 import sys
 import time
 import unittest
@@ -65,7 +63,6 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 from nt124usb import LineCoding, ST_PARITY  # noqa: E402
 from support import PeerTestCase, read_while_peer_writes  # noqa: E402
 
-_DESTRUCTIVE = os.environ.get("NT124_DESTRUCTIVE") == "1"
 _PATTERN = bytes(i & 0xFF for i in range(8192))
 
 
@@ -85,8 +82,6 @@ def _stream_with_mismatched_parity(port, peer):
         peer.flush_input()
 
 
-@unittest.skipUnless(_DESTRUCTIVE, "set NT124_DESTRUCTIVE=1 to run this -- it "
-                                    "leaves ports 1-3 corrupted until reboot/reflash")
 class TestParityErrorInjection(PeerTestCase):
 
     def test_data_not_lost_under_sustained_parity_errors(self) -> None:
