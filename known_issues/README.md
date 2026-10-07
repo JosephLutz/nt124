@@ -15,4 +15,12 @@ empty folder (eventually just this README) means nothing's outstanding.
 
 ## Current issues
 
-None outstanding.
+- [RX DMA error leaks IRQs](rx-dma-error-leaks-irqs.md) -- low-medium severity, confirmed in source (not hardware-reproduced), a DMA transfer error without a simultaneous transfer-complete permanently disables a port's RX interrupts
+- [TX DMA error may overwrite fresh state](tx-dma-error-may-overwrite-fresh-state.md) -- low severity, unconfirmed, same-shaped risk as the RX issue above but on the TX side
+- [`tx_empty` field not volatile](tx_empty-field-not-volatile.md) -- very low severity, confirmed inconsistency, no live race identified yet
+- [bDataBits switch silently substitutes unsupported values](databits-switch-silently-substitutes-unsupported-values.md) -- low-medium severity, confirmed inconsistency with the adjacent parity switch's handling
+- [rx_buffer/buffers not volatile](rx-buffers-not-volatile.md) -- very low severity, confirmed inconsistency, no concrete failure scenario found
+- [Unused chip-unique-ID serial number](unused-unique-id-serial-number.md) -- trivial, dead code
+- [Unused "Port N" USB strings](unused-port-name-usb-strings.md) -- trivial, dead data / unwired feature
+- [Unused TIM1 reset](unused-tim1-reset.md) -- trivial, harmless cleanup
+- [Unexplained CRC clock toggle](unexplained-crc-clock-toggle.md) -- very low severity, unconfirmed, looks purposeless
