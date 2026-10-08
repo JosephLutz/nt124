@@ -30,8 +30,6 @@ void usb_reset_hardware(void) {
 		RCC_APB1RSTR_USBRST);
 	rcc_peripheral_clear_reset(&RCC_APB1RSTR,
 		RCC_APB1RSTR_USBRST);
-
-	rcc_peripheral_disable_clock(&RCC_AHBENR,  RCC_AHBENR_CRCEN);
 }
 
 void usb_platform_init(void)
@@ -56,7 +54,4 @@ void usb_platform_init(void)
 	// set into Idle state (pull-up resistor on the re-enumerate pin)
 	gpio_set_mode(USB_ENUMERATE_PORT, GPIO_MODE_OUTPUT_10_MHZ, GPIO_CNF_OUTPUT_PUSHPULL, USB_ENUMERATE_PIN);
 	gpio_set(USB_ENUMERATE_PORT, USB_ENUMERATE_PIN);
-
-	// Enable the CRC clock
-	rcc_peripheral_enable_clock(&RCC_AHBENR,  RCC_AHBENR_CRCEN);
 }
