@@ -226,10 +226,6 @@ static const char *usb_strings[] = {
 	"NovaTech LLC",
 	BOARD_IDENT,
 	(char *)SERIALNO_FLASH_LOCATION,
-	"Port 1",
-	"Port 2",
-	"Port 3",
-	"Port 4",
 };
 
 const int uart_lookup[] = {
