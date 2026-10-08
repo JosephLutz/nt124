@@ -15,6 +15,7 @@ empty folder (eventually just this README) means nothing's outstanding.
 
 ## Current issues
 
+- [Line coding change can corrupt an in-flight DMA transfer](line-coding-change-corrupts-in-flight-dma.md) -- low-medium severity, confirmed mechanism, deferred alongside the other line-coding work below
 - [`tx_empty` field not volatile](tx_empty-field-not-volatile.md) -- very low severity, confirmed inconsistency, no live race identified yet
 - [bDataBits switch silently substitutes unsupported values](databits-switch-silently-substitutes-unsupported-values.md) -- low-medium severity, confirmed inconsistency with the adjacent parity switch's handling
 - [rx_buffer/buffers not volatile](rx-buffers-not-volatile.md) -- very low severity, confirmed inconsistency, no concrete failure scenario found
