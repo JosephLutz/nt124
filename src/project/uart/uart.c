@@ -922,11 +922,25 @@ inline static void uart_RX_DMA(struct uart_t *dev) {
 		UART_TRACE(dev, __LINE__);
 	}
 	if (dma_get_interrupt_flag(dev->hardware->rx.dma, dev->hardware->rx.channel, DMA_TEIF)) {
-		// DMA error was encountered
-		// TODO: Better handiling should be implemented and not just disable the uart
+		// Recover immediately rather than leaving the port dead -- see
+		// commit message. RX_DMA_ERROR is a diagnostic marker only
+		// (not reported to the host -- nothing it could do with it).
 		dma_clear_interrupt_flags(dev->hardware->rx.dma, dev->hardware->rx.channel, DMA_TEIF);
-		dev->rx_state |= RX_DMA_ERROR;
 		usart_disable(dev->hardware->usart);
+		dev->rx_state = RX_DMA_ERROR;
+		dev->rx_dma_index = 0;
+		dma_set_memory_address(dev->hardware->rx.dma, dev->hardware->rx.channel, (uint32_t)(dev->rx_buffer[0]));
+		dma_set_number_of_data(dev->hardware->rx.dma, dev->hardware->rx.channel, RX_BUFFER_SIZE);
+		dma_enable_channel(dev->hardware->rx.dma, dev->hardware->rx.channel);
+		timer_clear_flag(dev->hardware->timer, TIM_SR_UIF);
+		timer_disable_counter(dev->hardware->timer);
+		timer_set_counter(dev->hardware->timer, 0);
+		timer_enable_counter(dev->hardware->timer);
+		timer_enable_irq(dev->hardware->timer, TIM_DIER_UIE);
+		usart_enable(dev->hardware->usart);
+		nvic_enable_irq(dev->hardware->timer_irqn);
+		nvic_enable_irq(dev->hardware->rx.dma_irqn);
+		nvic_enable_irq(dev->hardware->irqn);
 		UART_TRACE(dev, __LINE__);
 	}
 }
