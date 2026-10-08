@@ -15,7 +15,6 @@ empty folder (eventually just this README) means nothing's outstanding.
 
 ## Current issues
 
-- [TX DMA error may overwrite fresh state](tx-dma-error-may-overwrite-fresh-state.md) -- low severity, unconfirmed, same-shaped risk as the RX issue above but on the TX side
 - [`tx_empty` field not volatile](tx_empty-field-not-volatile.md) -- very low severity, confirmed inconsistency, no live race identified yet
 - [bDataBits switch silently substitutes unsupported values](databits-switch-silently-substitutes-unsupported-values.md) -- low-medium severity, confirmed inconsistency with the adjacent parity switch's handling
 - [rx_buffer/buffers not volatile](rx-buffers-not-volatile.md) -- very low severity, confirmed inconsistency, no concrete failure scenario found
