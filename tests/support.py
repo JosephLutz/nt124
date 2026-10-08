@@ -13,6 +13,8 @@ import threading
 import tomllib
 import unittest
 
+import usb.core
+
 from nt124usb import NUM_PORTS, Board, Packet, Port
 
 from peer import Peer
@@ -93,6 +95,18 @@ class PeerTestCase(Nt124TestCase):
         """Yield (index, port, peer) for all 4 ports."""
         for i in range(NUM_PORTS):
             yield i, self.board.port(i), self.peers[i]
+
+
+def drain_port(port: Port, timeout: int = 50) -> None:
+    """Discard any stale pending IN packets on `port` before a test starts
+    reading it for real -- a prior test's leftover, undelivered packet
+    would otherwise show up as unexpected extra bytes prepended to the next
+    read. Mirrors test_RS232_modem_status_lines.py's local `_drain()`."""
+    try:
+        while True:
+            port.read_packet(timeout=timeout)
+    except usb.core.USBError:
+        pass
 
 
 def write_while_reading(port: Port, pattern: bytes, timeout: int = 2000,

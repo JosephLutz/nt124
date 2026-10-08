@@ -117,3 +117,9 @@ class Peer:
     def set_rts(self, value: bool) -> None: self._ser.rts = value
 
     def set_dtr(self, value: bool) -> None: self._ser.dtr = value
+
+    def send_break(self, duration: float = 0.25) -> None:
+        """Hold TX low for `duration` seconds (blocks) -- a real BREAK
+        condition on the wire, mirroring nt124usb.Port.send_break()'s
+        ergonomics for the opposite direction."""
+        self._ser.send_break(duration)
