@@ -19,3 +19,4 @@ empty folder (eventually just this README) means nothing's outstanding.
 - [`tx_empty` field not volatile](tx_empty-field-not-volatile.md) -- very low severity, confirmed inconsistency, no live race identified yet
 - [bDataBits switch silently substitutes unsupported values](databits-switch-silently-substitutes-unsupported-values.md) -- low-medium severity, confirmed inconsistency with the adjacent parity switch's handling
 - [rx_buffer/buffers not volatile](rx-buffers-not-volatile.md) -- very low severity, confirmed inconsistency, no concrete failure scenario found
+- [Received BREAK not distinguished from an ordinary framing error](received-break-not-distinguished-from-framing-error.md) -- low severity, confirmed gap, `ACM_CTRL_BRK` defined but never set
