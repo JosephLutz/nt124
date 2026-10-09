@@ -47,8 +47,18 @@ _PATTERN = bytes(i & 0xFF for i in range(4096))
 
 
 def _stream_with_framing_mismatch(port, peer):
-    port.set_line_coding(LineCoding(115200))
-    peer.configure(230400)  # exactly double -- reliably misframes a continuous stream
+    # nt124's receiver runs *faster* than the actual incoming data (230400
+    # configured, 115200 actually arriving) -- the same direction already
+    # proven reliable in test_RS232_line_coding_edge_cases.py's baud-
+    # mismatch test (different absolute values so the two stay
+    # independent). The opposite direction (receiver slower than the
+    # incoming data, i.e. undersampling) was tried first and dropped:
+    # confirmed flaky on real hardware (failed roughly half the time) --
+    # with a clean 2x ratio and this file's periodic 0x00-0xFF ramp
+    # pattern, undersampling can occasionally alias into something that
+    # still looks like valid framing, where oversampling reliably doesn't.
+    port.set_line_coding(LineCoding(230400))
+    peer.configure(115200)
     try:
         return read_while_peer_writes(port, peer, _PATTERN, timeout=5000)
     finally:
